@@ -1,0 +1,9 @@
+{
+  "schema": "ring-b02-formal-runtime-config-v1",
+  "enabled": false,
+  "profile": "FORMAL",
+  "stateRoot": "var/private/formal-runtime",
+  "maximumGrantTtlMs": 300000,
+  "providerCallsOnConstruction": false,
+  "externalWitnessRequired": true
+}

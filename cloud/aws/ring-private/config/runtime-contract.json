@@ -1,0 +1,244 @@
+{
+  "schema": "ring-rpl003-runtime-contract.v2",
+  "production_admitted": false,
+  "public_ingress_default": "DISABLED",
+  "token_intake_evidence": {
+    "DOCUMENTED": [
+      "Ring backend sends the authorization code to the configured Token Exchange URL by POST.",
+      "The partner backend exchanges that code with Ring using the documented OAuth token endpoint."
+    ],
+    "UNKNOWN": [
+      "Exact incoming field set and handling of extra fields.",
+      "Direct sender-authentication mechanism for the incoming token request.",
+      "Exact successful HTTP status and response body required by Ring.",
+      "Provider issue-time anchor for the sixty-second one-time code window."
+    ],
+    "LOCAL_CONSERVATIVE": [
+      "REST API v1 POST /ring/token.",
+      "Canonical base64 body of at most 4096 decoded bytes.",
+      "application/x-www-form-urlencoded with exactly one code field and no query.",
+      "HTTP 202 means local intake accepted only and is not claimed as the official Ring acknowledgement contract."
+    ]
+  },
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/ring/token",
+      "authority": "LOCAL_CONSERVATIVE"
+    },
+    {
+      "method": "GET",
+      "path": "/ring/link",
+      "authority": "LOCAL_B02_SESSION"
+    },
+    {
+      "method": "GET",
+      "path": "/ring/complete",
+      "authority": "LOCAL_SIGNED_COMPLETION_STATE"
+    },
+    {
+      "method": "POST",
+      "path": "/ring/webhook",
+      "authority": "DOCUMENTED_SIGNED_WEBHOOK_WITH_LOCAL_FAIL_CLOSED_CONTROLS"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/login",
+      "authority": "LOCAL_VERIFIED_OAUTH_AND_RING_OWNER"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/callback",
+      "authority": "LOCAL_VERIFIED_OAUTH_AND_RING_OWNER"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/logout",
+      "authority": "LOCAL_VERIFIED_OAUTH_AND_RING_OWNER"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/session",
+      "authority": "LOCAL_VERIFIED_OAUTH_AND_RING_OWNER"
+    }
+  ],
+  "one_way": {
+    "authorization_code_local_receipt_deadline_seconds": 60,
+    "authorization_code_deadline_anchor": "UNKNOWN_PROVIDER_ISSUE_TIME",
+    "nonce": "HMAC_SHA256_URLSAFE",
+    "provider_mutations": [
+      "POST",
+      "PATCH"
+    ],
+    "uncertain_provider_outcome": "OUTCOME_UNKNOWN"
+  },
+  "secret_pinning": {
+    "provider": "EXACT_VERSION_ID",
+    "digest": "EXACT_VERSION_ID",
+    "version_stage_fallback": "DENIED",
+    "required_before_enabled_runtime": true
+  },
+  "webhook_deadline": {
+    "handler_entry_budget_ms": 4000,
+    "request_or_environment_configurable": false,
+    "timeout_status": 503,
+    "late_success": "DENIED",
+    "dispatched_write_timeout": "OUTCOME_UNKNOWN"
+  },
+  "lambda_timeout": {
+    "shared_function_seconds": 10,
+    "reason": "separate token workflow",
+    "webhook_enforcement": "FIXED_APPLICATION_DEADLINE"
+  },
+  "logging": {
+    "retention_days": 14,
+    "allowed_fields": [
+      "event",
+      "route",
+      "outcome",
+      "statusCode"
+    ],
+    "forbidden_fields": [
+      "body",
+      "headers",
+      "query",
+      "cookie",
+      "authorization",
+      "token",
+      "code",
+      "account_id",
+      "device_id"
+    ]
+  },
+  "source_auth": {
+    "official_incoming_custom_authorizer": "UNKNOWN",
+    "incoming_requirement": "LOCAL_CONSERVATIVE_POST_SHAPE_ONLY",
+    "post_intake_authority": "immediate_ring_oauth_exchange_replay_ledger_and_local_receipt_deadline",
+    "malformed_or_extra_fields": "LOCAL_FAIL_CLOSED"
+  },
+  "b02_session": {
+    "layer_module": "file:///opt/ring-b02/session-port.mjs",
+    "required_exports": [
+      "createRingB02SessionSeam"
+    ],
+    "required_methods": [
+      "resolveLinkSession",
+      "identityAuthority.resolveMatchedRingAccount",
+      "identityAuthority.recheck"
+    ],
+    "default": "FAIL_CLOSED",
+    "source_factory": "cloud/aws/ring-private/b02-layer-runtime.mjs",
+    "owner_binding": "root-pinned owner ceremony + actual Ring profile + verified same-request Cognito; no login-only ownership"
+  },
+  "mcp_cognito": {
+    "state": "DISABLED",
+    "production_admitted": false,
+    "conditional_on_real_pkce_resource_parity": true,
+    "required_production_ports": [
+      "pinned_public_jwks",
+      "trusted_tls_evidence",
+      "existing_formal_mcp_application"
+    ],
+    "resource_claim": "ABSENT",
+    "aud": "EXACT_MCP_RESOURCE_URI",
+    "client_id": "EXACT_PUBLIC_CLIENT",
+    "maximum_token_lifetime_seconds": 300,
+    "new_api_lambda_tables": 0,
+    "metadata_route": "/.well-known/oauth-protected-resource",
+    "mcp_route": "/mcp",
+    "artifact": "FIXED_REVIEWED_CURRENT_IMPORT_CLOSURE",
+    "missing_ports": "FINITE_503_NO_FALLBACK"
+  },
+  "mcp_production_ports": {
+    "schema": "ring-c4-production-ports-contract-v1",
+    "default": "DISABLED",
+    "layer_module": "file:///opt/ring-b02/formal-mcp-ports.mjs",
+    "admission_file": "/opt/ring-b02/formal-mcp-admission.json",
+    "admission_pin_environment": "RING_MCP_ADMISSION_SHA256",
+    "authority": "root-controlled readonly fixed layer, digest-pinned gateway/deployment and actual same-event Lambda invocation provenance",
+    "required_layer_export": "createRingB02FormalMcpSeam",
+    "required_seam": [
+      "assembly",
+      "formalContextPort",
+      "invocationSourcePort"
+    ],
+    "negotiated_tls_protocol": null,
+    "gateway_tls_basis": "separately qualified root-admitted gateway minimum TLS security policy; HTTP/1.1 is not TLS",
+    "forwarded_headers": "direct TLS denies; admitted gateway normalizes both header maps only after same-event/context source validation; values never determine TLS, routing or actor",
+    "jwks": "pinned regional Cognito issuer; GET HTTPS certificate verification; no redirects; timeout<=3000ms/body<=65536/cache<=300s/singleflight/close; construction zero requests",
+    "formal_bridge": "existing FORMAL profile/server-owned remote sealed-intent context; no simulator or alternate authority",
+    "formal_context_input": [
+      "request",
+      "actor",
+      "validatedWire",
+      "effectiveEnvelope"
+    ],
+    "formal_context_binding": "tools/call computes the accepted effective envelope once before context resolution; identical immutable object is passed to FORMAL dispatch, binding request, verified actor, RPC id, capability and arguments",
+    "formal_context_clock_boundary": "actual remote receipt issuer/consumer remain on the same Mac authority clock and boot; existing scope=mcp/purpose=mcp-entry/single-use/<=30s contract unchanged; no Lambda timestamp or new authority",
+    "formal_admission": "PENDING: local factories and routes implemented; actual deployment, owner binding and same-command acceptance remain required",
+    "native_regional_gateway": {
+      "host": "exact apiId.execute-api.region.amazonaws.com",
+      "endpoint_type": "REGIONAL",
+      "security_policy": "SecurityPolicy_TLS13_1_2_2021_06",
+      "endpoint_access_mode": "STRICT",
+      "api_status": "AVAILABLE",
+      "minimum_tls_version": "TLSv1.2",
+      "negotiated_protocol": null,
+      "activation": "actual deployment/admission hash required"
+    }
+  },
+  "mac_command_transport": {
+    "qualification": "LOCAL_IMPLEMENTATION_NOT_FORMAL_RUNTIME_ACCEPTANCE",
+    "api_routes": [
+      {
+        "method": "POST",
+        "path": "/mac/commands/fetch"
+      },
+      {
+        "method": "POST",
+        "path": "/mac/commands/receipt"
+      }
+    ],
+    "authorization": "same-request verified Cognito and actual durable Ring owner association",
+    "mcp_tools": [
+      "software_test_switch.set",
+      "software_test_switch.result",
+      "home_device.command",
+      "home_device.result"
+    ],
+    "shared_storage": "existing Ring event table",
+    "command_identity": "owner + initiating token session digest + typed JSON-RPC id",
+    "delivery": "conditional claim, expiry and single-use durable Mac journal; PENDING/UNKNOWN are not success",
+    "execution": "existing Mac issue/consume dispatcher; private consumed receipt gates software port",
+    "physical_devices": false
+  },
+  "browser_session": {
+    "state": "DISABLED_BY_DEFAULT",
+    "production_admitted": false,
+    "activation": "Managed Cognito provisioning plus exact root gateway admission artifact required; does not activate formal MCP",
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/auth/login"
+      },
+      {
+        "method": "GET",
+        "path": "/auth/callback"
+      },
+      {
+        "method": "GET",
+        "path": "/auth/logout"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/session"
+      }
+    ],
+    "oauth": "S256 PKCE; exact callback; encrypted host-only SameSite=Lax state; one-use Dynamo state; verified issuer/client/resource/scopes/300-second token",
+    "owner": "Existing genuine Ring owner association required; operator approval and actual Ring profile are separate from Cognito login",
+    "logout": "Clear browser cookies; durable session expires within existing 300-second lease",
+    "provider_exchange": "One request, no redirect or retry, HTTPS certificate verification, absolute 3000ms deadline",
+    "logging": "No code/token/cookie/header/query logging",
+    "new_services": 0
+  }
+}

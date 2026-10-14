@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Import-only actual-state template for the retained Ring artifact bucket.
+
+Resources:
+  RingPrivateArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ring-home-mcp-private-artifacts-${AWS::AccountId}-${AWS::Region}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: false
+            BlockedEncryptionTypes:
+              EncryptionType:
+                - SSE-C
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      Tags:
+        - Key: Project
+          Value: ring-home-mcp-hub
+        - Key: Boundary
+          Value: RingOnly
+        - Key: WorkOrder
+          Value: 20260929_ring_private_linking
+        - Key: ManagedBy
+          Value: CloudFormation

@@ -1,0 +1,200 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyWrongRegion",
+      "Effect": "Deny",
+      "Action": [
+        "cloudformation:*",
+        "lambda:*",
+        "dynamodb:*",
+        "kms:*",
+        "secretsmanager:*",
+        "logs:*",
+        "s3:*"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "aws:RequestedRegion": "ap-southeast-1"
+        }
+      }
+    },
+    {
+      "Sid": "DenyProtectedResourceTags",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "aws:ResourceTag/Project": [
+            "other-stack-a",
+            "other-stack-b",
+            "other-stack-c"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyProtectedRequestTags",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "aws:RequestTag/Project": [
+            "other-stack-a",
+            "other-stack-b",
+            "other-stack-c"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyProtectedStacks",
+      "Effect": "Deny",
+      "Action": "cloudformation:*",
+      "Resource": [
+        "arn:aws:cloudformation:*:*:stack/other-stack-a*/*",
+        "arn:aws:cloudformation:*:*:stack/other-stack-b*/*",
+        "arn:aws:cloudformation:*:*:stack/other-stack-c*/*"
+      ]
+    },
+    {
+      "Sid": "CallerIdentity",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "BootstrapStackLifecycle",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateStack",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DetectStackDrift",
+        "cloudformation:DetectStackResourceDrift",
+        "cloudformation:DescribeStackResourceDrifts",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:DeleteStack",
+        "cloudformation:GetTemplate"
+      ],
+      "Resource": "arn:aws:cloudformation:ap-southeast-1:*:stack/ring-home-mcp-private-bootstrap/*"
+    },
+    {
+      "Sid": "BootstrapDriftTypeConfigurationRead",
+      "Effect": "Allow",
+      "Action": "cloudformation:BatchDescribeTypeConfigurations",
+      "Resource": "*"
+    },
+    {
+      "Sid": "BootstrapDriftStatusRead",
+      "Effect": "Allow",
+      "Action": "cloudformation:DescribeStackDriftDetectionStatus",
+      "Resource": "*"
+    },
+    {
+      "Sid": "BootstrapArtifactBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetBucketLocation",
+        "s3:GetBucketNotification",
+        "s3:GetBucketObjectLockConfiguration",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetReplicationConfiguration",
+        "s3:GetBucketTagging",
+        "s3:GetBucketVersioning",
+        "s3:ListBucket",
+        "s3:ListBucketMultipartUploads",
+        "s3:ListBucketVersions",
+        "s3:PutEncryptionConfiguration",
+        "s3:PutLifecycleConfiguration",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketTagging",
+        "s3:PutBucketVersioning"
+      ],
+      "Resource": "arn:aws:s3:::ring-home-mcp-private-artifacts-*-ap-southeast-1"
+    },
+    {
+      "Sid": "BootstrapCreateTaggedRoles",
+      "Effect": "Allow",
+      "Action": "iam:CreateRole",
+      "Resource": [
+        "arn:aws:iam::*:role/ring-home-mcp-private/ring-home-mcp-private-cfn-exec",
+        "arn:aws:iam::*:role/ring-home-mcp-private/ring-home-mcp-private-lambda-runtime"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "ring-home-mcp-hub",
+          "aws:RequestTag/Boundary": "RingOnly",
+          "aws:RequestTag/WorkOrder": "20260929_ring_private_linking",
+          "aws:RequestTag/ManagedBy": "CloudFormation"
+        }
+      }
+    },
+    {
+      "Sid": "BootstrapTagNamedRoles",
+      "Effect": "Allow",
+      "Action": "iam:TagRole",
+      "Resource": [
+        "arn:aws:iam::*:role/ring-home-mcp-private/ring-home-mcp-private-cfn-exec",
+        "arn:aws:iam::*:role/ring-home-mcp-private/ring-home-mcp-private-lambda-runtime"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "ring-home-mcp-hub",
+          "aws:RequestTag/Boundary": "RingOnly",
+          "aws:RequestTag/WorkOrder": "20260929_ring_private_linking",
+          "aws:RequestTag/ManagedBy": "CloudFormation"
+        }
+      }
+    },
+    {
+      "Sid": "BootstrapManageNamedRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:PutRolePolicy",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:role/ring-home-mcp-private/ring-home-mcp-private-cfn-exec",
+        "arn:aws:iam::*:role/ring-home-mcp-private/ring-home-mcp-private-lambda-runtime"
+      ]
+    },
+    {
+      "Sid": "BootstrapReadNamedRoles",
+      "Effect": "Allow",
+      "Action": "iam:GetRole",
+      "Resource": [
+        "arn:aws:iam::*:role/ring-home-mcp-private-cfn-exec",
+        "arn:aws:iam::*:role/ring-home-mcp-private-lambda-runtime"
+      ]
+    },
+    {
+      "Sid": "BootstrapReadRingAdminSelfRole",
+      "Effect": "Allow",
+      "Action": "iam:GetRole",
+      "Resource": "arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/ap-southeast-1/AWSReservedSSO_example-admin_*"
+    }
+  ]
+}

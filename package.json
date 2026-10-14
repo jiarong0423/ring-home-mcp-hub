@@ -1,0 +1,19 @@
+{
+  "name": "ring-home-mcp-hub",
+  "version": "1.0.0",
+  "description": "An MCP home hub for AI agents that acts only for a Ring-verified owner and reports executed=true only after a verified receipt.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "start:ring-playground": "bash scripts/start_ring_playground_demo.sh",
+    "start:cloud-panel": "bash scripts/start_cloud_panel_demo.sh",
+    "test": "node --test tests/smoke.mjs tests/edge_simulation.mjs tests/ring_ingress.mjs tests/ring_edge_bridge.mjs tests/ring_mcp_bridge.mjs tests/ring_official_client.mjs tests/ring_official_history_client.mjs tests/local_identity.mjs tests/local_command.mjs tests/local_ring_http.mjs tests/cloud_mcp_panel.mjs",
+    "test:cloud-panel": "node --test tests/cloud_mcp_panel.mjs",
+    "test:mac-worker": "cd vendor_mac_launcher && node --test tests/*.test.mjs"
+  }
+}

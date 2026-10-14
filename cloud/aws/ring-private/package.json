@@ -1,0 +1,17 @@
+{
+  "name": "ring-private-backend-candidate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1146.0",
+    "@aws-sdk/client-kms": "3.1146.0",
+    "@aws-sdk/client-secrets-manager": "3.1146.0"
+  }
+}

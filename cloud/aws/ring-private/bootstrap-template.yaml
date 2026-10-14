@@ -1,0 +1,306 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Ring-only bootstrap resources for the private Home MCP backend.
+
+Resources:
+  RingPrivateArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ring-home-mcp-private-artifacts-${AWS::AccountId}-${AWS::Region}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: false
+            BlockedEncryptionTypes:
+              EncryptionType:
+                - SSE-C
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+          - Id: ExpireNoncurrentArtifactVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      Tags:
+        - Key: Project
+          Value: ring-home-mcp-hub
+        - Key: Boundary
+          Value: RingOnly
+        - Key: WorkOrder
+          Value: 20260929_ring_private_linking
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  RingPrivateArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Bucket: !Ref RingPrivateArtifactBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt RingPrivateArtifactBucket.Arn
+              - !Sub ${RingPrivateArtifactBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  RingPrivateCloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName: ring-home-mcp-private-cfn-exec
+      Path: /ring-home-mcp-private/
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CloudFormationOnly
+            Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ManageDeterministicRingPrivateResources
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadRingPrivateDeploymentArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub ${RingPrivateArtifactBucket.Arn}/sam/ring-home-mcp-private/*
+              - Sid: ManageRingPrivateFunction
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - lambda:GetRuntimeManagementConfig
+                  - lambda:ListTags
+                  - lambda:PutRuntimeManagementConfig
+                  - lambda:TagResource
+                  - lambda:UntagResource
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:ring-home-mcp-private
+              - Sid: ManageRingPrivateLogGroup
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:ListTagsForResource
+                  - logs:PutRetentionPolicy
+                  - logs:TagResource
+                  - logs:UntagResource
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ring-home-mcp-private
+              - Sid: ManageRingPrivateTable
+                Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeContinuousBackups
+                  - dynamodb:DescribeTable
+                  - dynamodb:DescribeTimeToLive
+                  - dynamodb:ListTagsOfResource
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                  - dynamodb:UpdateContinuousBackups
+                  - dynamodb:UpdateTable
+                  - dynamodb:UpdateTimeToLive
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ring-home-mcp-private-link
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ring-home-mcp-private-event
+              - Sid: ManageRingPrivateWitnessTable
+                Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:DescribeContinuousBackups
+                  - dynamodb:ListTagsOfResource
+                  - dynamodb:TagResource
+                  - dynamodb:UpdateTable
+                  - dynamodb:UpdateContinuousBackups
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ring-home-mcp-private-witness
+              - Sid: CreateTaggedRingPrivateKey
+                Effect: Allow
+                Action:
+                  - kms:CreateKey
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/Project: ring-home-mcp-hub
+                    aws:RequestTag/Boundary: RingOnly
+                    aws:RequestTag/WorkOrder: 20260929_ring_private_linking
+                    aws:RequestTag/ManagedBy: CloudFormation
+                  ForAllValues:StringEquals:
+                    aws:TagKeys:
+                      - Project
+                      - Boundary
+                      - WorkOrder
+                      - ManagedBy
+              - Sid: ManageTaggedRingPrivateKey
+                Effect: Allow
+                Action:
+                  - kms:CancelKeyDeletion
+                  - kms:DescribeKey
+                  - kms:EnableKeyRotation
+                  - kms:GetKeyPolicy
+                  - kms:GetKeyRotationStatus
+                  - kms:ListResourceTags
+                  - kms:PutKeyPolicy
+                  - kms:TagResource
+                  - kms:UntagResource
+                Resource: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/Project: ring-home-mcp-hub
+                    aws:ResourceTag/Boundary: RingOnly
+                    aws:ResourceTag/WorkOrder: 20260929_ring_private_linking
+                    aws:ResourceTag/ManagedBy: CloudFormation
+              - Sid: ManageRingPrivateKeyAlias
+                Effect: Allow
+                Action:
+                  - kms:CreateAlias
+                  - kms:DeleteAlias
+                  - kms:UpdateAlias
+                Resource:
+                  - !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/ring-home-mcp-private-token
+                  - !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*
+              - Sid: ManageRingPrivateSecretContainers
+                Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:TagResource
+                  - secretsmanager:UntagResource
+                  - secretsmanager:UpdateSecret
+                Resource:
+                  - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ring-home-mcp-private/provider-*
+                  - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ring-home-mcp-private/digest-*
+                  - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ring-home-mcp-private/telegram-*
+              - Sid: PassOnlyRingPrivateRuntimeRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt RingPrivateLambdaRuntimeRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+      Tags:
+        - Key: Project
+          Value: ring-home-mcp-hub
+        - Key: Boundary
+          Value: RingOnly
+        - Key: WorkOrder
+          Value: 20260929_ring_private_linking
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  RingPrivateLambdaRuntimeRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3037
+    Properties:
+      RoleName: ring-home-mcp-private-lambda-runtime
+      Path: /ring-home-mcp-private/
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: LambdaOnly
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RingPrivateRuntimeDataPlane
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: RingPrivateLinkData
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:TransactGetItems
+                  - dynamodb:TransactWriteItems
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ring-home-mcp-private-link
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ring-home-mcp-private-link/index/GSI1
+              - Sid: RingPrivateEventData
+                Effect: Allow
+                Action:
+                  - dynamodb:ConditionCheckItem
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:TransactWriteItems
+                  - dynamodb:UpdateItem
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ring-home-mcp-private-event
+              - Sid: RingPrivateWitnessData
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ring-home-mcp-private-witness
+              - Sid: RingPrivateEnvelopeKey
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*
+                Condition:
+                  ForAnyValue:StringEquals:
+                    kms:ResourceAliases: alias/ring-home-mcp-private-token
+              - Sid: RingPrivateSecretVersions
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ring-home-mcp-private/provider-*
+                  - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ring-home-mcp-private/digest-*
+                  - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ring-home-mcp-private/telegram-*
+              - Sid: RingPrivateFunctionLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ring-home-mcp-private:log-stream:*
+      Tags:
+        - Key: Project
+          Value: ring-home-mcp-hub
+        - Key: Boundary
+          Value: RingOnly
+        - Key: WorkOrder
+          Value: 20260929_ring_private_linking
+        - Key: ManagedBy
+          Value: CloudFormation

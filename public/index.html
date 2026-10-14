@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title data-i18n="page.title"></title>
+  <style>
+    :root {
+      --bg: #0b1019;
+      --surface: #151d2a;
+      --surface-2: #1d2939;
+      --line: #304055;
+      --text: #f2f6fa;
+      --muted: #a8b7ca;
+      --accent: #60dbbe;
+      --accent-ink: #061e1a;
+      --warn: #ffd18a;
+      --danger: #ff9c9c;
+      --shadow: 0 20px 60px rgba(0, 0, 0, .25);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; color: var(--text); background: radial-gradient(circle at 80% -10%, #173449 0, transparent 34%), var(--bg); }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .55; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .shell { width: min(1280px, calc(100% - 32px)); margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 24px 0 20px; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 13px; }
+    .brand-mark { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #4a9488; border-radius: 13px; background: #153a37; color: var(--accent); font-weight: 850; letter-spacing: -.05em; }
+    .brand strong { display: block; font-size: 1.08rem; letter-spacing: .015em; }
+    .brand small { color: var(--muted); }
+    .header-side { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+    .badge { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1px solid #867254; border-radius: 999px; color: var(--warn); background: #32291e; font-size: .78rem; font-weight: 800; letter-spacing: .08em; }
+    .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 3px #ffd18a22; }
+    .header-note { font-size: .78rem; color: var(--muted); }
+    main { padding: 30px 0 60px; }
+    .hero { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 20px; margin-bottom: 24px; }
+    h1 { margin: 0 0 8px; font-size: clamp(1.65rem, 4vw, 2.45rem); letter-spacing: -.035em; }
+    h2 { margin: 0; font-size: 1.18rem; letter-spacing: -.02em; }
+    h3 { margin: 0; font-size: 1.03rem; }
+    p { line-height: 1.55; }
+    .hero p, .section-intro { margin: 0; color: var(--muted); }
+    .hero-stats { display: flex; gap: 10px; }
+    .connection { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 13px; color: var(--muted); font-size: .79rem; }
+    .connection code { padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; color: #d5f5e9; background: #13232b; overflow-wrap: anywhere; }
+    .stat { min-width: 94px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .stat strong { display: block; font-size: 1.35rem; }
+    .stat span { color: var(--muted); font-size: .77rem; }
+    .panel { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+    .login { max-width: 480px; margin: 52px auto 0; padding: 27px; }
+    .login h2 { font-size: 1.45rem; }
+    .login p { color: var(--muted); }
+    .field { display: grid; gap: 7px; min-width: 0; }
+    label { color: #dce6ef; font-size: .86rem; font-weight: 650; }
+    input, select { width: 100%; min-height: 41px; padding: 9px 11px; border: 1px solid #526075; border-radius: 10px; background: #0d1521; color: var(--text); }
+    input::placeholder { color: #7f91a6; }
+    input[type="datetime-local"] { color-scheme: dark; }
+    .hint { color: var(--muted); font-size: .78rem; }
+    .button { display: inline-flex; justify-content: center; align-items: center; min-height: 39px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); background: var(--surface-2); font-weight: 670; transition: border-color .15s, background .15s; }
+    .button:hover:not(:disabled) { border-color: var(--accent); background: #27403f; }
+    .button.primary { color: var(--accent-ink); border-color: var(--accent); background: var(--accent); }
+    .button.primary:hover:not(:disabled) { background: #8cebd3; }
+    .button.danger { border-color: #9f6969; color: #ffe1e1; background: #42282d; }
+    .button.small { min-height: 34px; padding: 6px 10px; font-size: .8rem; }
+    .button.full { width: 100%; margin-top: 18px; }
+    .notice { display: none; margin-bottom: 19px; padding: 11px 14px; border-radius: 11px; border: 1px solid #537c71; background: #1a3833; color: #d7f6eb; line-height: 1.45; }
+    .notice.show { display: block; }
+    .notice.error { border-color: #a56066; background: #42252c; color: #ffe4e5; }
+    .ring-discovery { padding: 20px; margin-bottom: 24px; }
+    .ring-discovery .section-intro { margin: 8px 0 15px; }
+    .ring-discovery-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
+    .ring-discovery-controls .field { width: min(360px, 100%); }
+    .ring-discovery output { display: block; margin-top: 13px; color: var(--muted); line-height: 1.5; }
+    .cloud-mcp-labels { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+    .cloud-mcp-steps { counter-reset: none; }
+    .cloud-mcp-steps li { justify-content: flex-start; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .cloud-mcp-steps li time { color: var(--muted); min-width: 92px; }
+    .cloud-mcp-result[data-ok="true"] { color: var(--accent) !important; font-weight: 700; }
+    .cloud-mcp-result[data-ok="false"] { color: var(--danger) !important; font-weight: 700; }
+    .edge-panel { padding: 20px; margin-bottom: 24px; }
+    .edge-panel .section-intro { margin: 8px 0 15px; }
+    .edge-overview { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .edge-overview .status { align-self: auto; }
+    .edge-controls { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 12px; }
+    .edge-controls .button { flex: 0 1 auto; }
+    .edge-summary { color: var(--muted); font-size: .82rem; line-height: 1.5; }
+    .edge-panel h3 { margin-top: 20px; }
+    .edge-receipts li { display: block; }
+    .edge-receipts li strong { margin-bottom: 4px; }
+    .edge-receipts li small { display: block; line-height: 1.5; }
+    .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 15px; margin: 27px 0 13px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(275px, 1fr)); gap: 14px; }
+    .device { padding: 18px; min-height: 225px; display: flex; flex-direction: column; gap: 14px; }
+    .device-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .device-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; color: #aff3dd; background: #19453e; font-size: 1.35rem; }
+    .device-title { flex: 1; }
+    .device-title h3 { margin-top: 2px; }
+    .device-title small { display: block; margin-top: 3px; color: var(--muted); font-size: .76rem; }
+    .status { align-self: flex-start; padding: 4px 8px; border-radius: 999px; border: 1px solid #6b5a46; color: var(--warn); background: #3a3023; font-size: .7rem; white-space: nowrap; }
+    .status.ready { border-color: #438775; color: var(--accent); background: #183f38; }
+    .device-state { min-height: 38px; padding: 9px 11px; border-radius: 9px; background: #0e1825; color: #d4e0eb; font-size: .79rem; overflow-wrap: anywhere; }
+    .device-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: auto; }
+    .device-actions .button { flex: 1 1 auto; }
+    .device-footnote { color: var(--muted); font-size: .73rem; }
+    .columns { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 16px; align-items: start; }
+    .section-panel { padding: 20px; }
+    .section-panel .section-intro { margin: 5px 0 17px; font-size: .83rem; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+    .form-grid .wide { grid-column: 1 / -1; }
+    .list { display: grid; gap: 9px; padding: 0; margin: 13px 0 0; list-style: none; }
+    .list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 11px; border: 1px solid #344153; border-radius: 10px; background: #101a27; font-size: .8rem; }
+    .list li strong { display: block; margin-bottom: 3px; }
+    .list li small { color: var(--muted); overflow-wrap: anywhere; }
+    .empty { color: var(--muted); font-size: .83rem; padding: 12px 0; }
+    .audit { max-height: 355px; overflow: auto; }
+    .audit li { display: block; }
+    .audit .audit-top { display: flex; justify-content: space-between; gap: 8px; }
+    .audit time { color: var(--muted); font-size: .72rem; white-space: nowrap; }
+    .audit small { display: block; margin-top: 4px; }
+    .dialog-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: #03080cbd; }
+    .dialog { width: min(100%, 460px); padding: 23px; }
+    .dialog p { color: var(--muted); margin: 9px 0 18px; }
+    .dialog .code { display: block; margin: 9px 0 15px; padding: 12px; border: 1px solid #5d776b; border-radius: 10px; color: var(--accent); background: #0e2824; font-size: 1.15rem; font-weight: 800; letter-spacing: .06em; overflow-wrap: anywhere; }
+    .dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .dialog-alert { color: var(--danger) !important; font-weight: 700; }
+    .mock-mail { margin: 12px 0 17px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #0b1d27; }
+    .mock-mail summary { cursor: pointer; font-weight: 750; }
+    .mock-mail p { margin: 9px 0; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    [hidden] { display: none !important; }
+    @media (max-width: 780px) { .columns { grid-template-columns: 1fr; } header { align-items: flex-start; } .header-note { display: none; } }
+    @media (max-width: 510px) { .shell { width: min(100% - 22px, 1280px); } .hero-stats { width: 100%; } .stat { flex: 1; } .form-grid { grid-template-columns: 1fr; } .form-grid .wide { grid-column: auto; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><div class="brand-mark" aria-hidden="true">M</div><div><strong data-i18n="brand.name"></strong><small data-i18n="header.subtitle"></small></div></div>
+      <div class="header-side"><span class="badge" data-i18n="header.badge"></span><span class="header-note" data-i18n="header.note"></span><a id="lang-toggle" class="button small" href="?lang=zh" data-i18n="lang.toggle" data-i18n-aria-label="lang.toggleAria"></a><button id="logout" class="button small" type="button" data-i18n="header.logout" hidden></button></div>
+    </header>
+    <main>
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+      <section id="login-view" class="panel login" aria-labelledby="login-heading">
+        <h2 id="login-heading" data-i18n="login.heading"></h2>
+        <p data-i18n="login.intro"></p>
+        <form id="login-form">
+          <div class="field"><label for="passcode" data-i18n="login.passcode.label"></label><input id="passcode" name="passcode" type="password" autocomplete="off" required><span class="hint" data-i18n="login.passcode.hint"></span></div>
+          <button class="button primary full" type="submit" data-i18n="login.submit"></button>
+        </form>
+      </section>
+      <div id="dashboard" hidden>
+        <section class="hero" aria-labelledby="page-heading">
+          <div><h1 id="page-heading" data-i18n="hero.heading"></h1><p data-i18n="hero.intro"></p><div class="connection"><span data-i18n="hero.endpoint"></span><code id="mcp-endpoint"></code><button id="copy-token" class="button small" type="button" data-i18n="hero.copyToken"></button><span data-i18n="hero.tokenNote"></span></div></div>
+          <div class="hero-stats" data-i18n-aria-label="hero.statsAria"><div class="stat"><strong id="device-count">7</strong><span data-i18n="hero.stat.devices"></span></div><div class="stat"><strong id="paired-count">0</strong><span data-i18n="hero.stat.paired"></span></div><div class="stat"><strong id="schedule-count">0</strong><span data-i18n="hero.stat.schedules"></span></div></div>
+        </section>
+        <section class="panel" aria-labelledby="wifi-permission-title" data-wifi-permission-root>
+          <h2 id="wifi-permission-title" data-i18n="wifi.title"></h2>
+          <p class="section-intro" data-i18n="wifi.intro"></p>
+          <output data-wifi-permission-status data-state="idle" role="status" aria-live="polite" aria-busy="false" data-i18n="wifi.status.initial"></output>
+          <div class="edge-controls">
+            <button class="button primary" type="button" data-wifi-authorize data-i18n="wifi.authorize"></button>
+            <button class="button" type="button" data-wifi-revoke disabled data-i18n="wifi.revoke"></button>
+          </div>
+        </section>
+        <section id="local-ring-panel" class="panel" aria-labelledby="local-ring-heading" hidden>
+          <h2 id="local-ring-heading" data-i18n="localRing.heading"></h2>
+          <p class="section-intro" data-i18n="localRing.intro"></p>
+          <div class="edge-controls">
+            <button id="local-ring-link" class="button" type="button" data-i18n="localRing.link"></button>
+            <button id="local-ring-motion" class="button" type="button" data-i18n="localRing.motion"></button>
+            <button id="local-ring-worker" class="button primary" type="button" data-i18n="localRing.worker"></button>
+            <button id="local-ring-offline" class="button" type="button" data-i18n="localRing.offline"></button>
+            <button id="local-ring-online" class="button" type="button" data-i18n="localRing.online"></button>
+            <button id="local-ring-remove" class="button" type="button" data-i18n="localRing.remove"></button>
+          </div>
+          <output id="local-ring-status" role="status" aria-live="polite"></output>
+          <ul id="local-ring-receipts" class="list" aria-live="polite"></ul>
+        </section>
+        <section id="ring-official-panel" class="panel ring-discovery" aria-labelledby="ring-discovery-heading">
+          <h2 id="ring-discovery-heading" data-i18n="ring.heading"></h2>
+          <p class="section-intro" data-i18n="ring.intro"></p>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="ring-operator-passcode" data-i18n="ring.operator.label"></label><input id="ring-operator-passcode" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="ring.operator.hint"></span></div>
+            <button id="ring-import" class="button" type="button" data-i18n="ring.import"></button>
+            <button id="ring-discover" class="button" type="button" data-i18n="ring.discover"></button>
+          </div>
+          <output id="ring-operator-diagnostic" role="status" aria-live="polite" data-i18n="ring.diag.initial"></output>
+          <output id="ring-import-status" role="status" aria-live="polite" data-i18n="ring.import.initial"></output>
+          <output id="ring-discovery-status" role="status" aria-live="polite" data-i18n="ring.discovery.initial"></output>
+          <button id="ring-capture" type="button" data-i18n="ring.capture"></button>
+          <output id="ring-capture-status" role="status" aria-live="polite" data-i18n="ring.capture.initial"></output>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="ring-history-device" data-i18n="ring.historyDevice.label"></label><select id="ring-history-device"><option value="" data-i18n="ring.historyDevice.queryFirst"></option></select><span class="hint" data-i18n="ring.historyDevice.hint"></span></div>
+            <button id="ring-history" class="button" type="button" data-i18n="ring.history"></button>
+          </div>
+          <output id="ring-history-status" role="status" aria-live="polite" data-i18n="ring.history.initial"></output>
+        </section>
+        <section id="cloud-mcp-panel" class="panel ring-discovery" aria-labelledby="cloud-mcp-heading" data-cloud-mcp-root>
+          <h2 id="cloud-mcp-heading" data-i18n="cloud.heading"></h2>
+          <div class="cloud-mcp-labels"><span class="badge" data-i18n="cloud.label.ring"></span><span class="badge" data-i18n="cloud.label.mac"></span></div>
+          <p class="section-intro" data-i18n="cloud.intro"></p>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="cloud-operator-passcode" data-i18n="cloud.operator.label"></label><input id="cloud-operator-passcode" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="cloud.operator.hint"></span></div>
+            <button id="cloud-login" class="button" type="button" data-i18n="cloud.login"></button>
+            <button id="cloud-refresh" class="button small" type="button" data-i18n="common.refreshStatus"></button>
+          </div>
+          <output id="cloud-mcp-status" role="status" aria-live="polite" data-i18n="cloud.status.initial"></output>
+          <output id="cloud-login-output" role="status" aria-live="polite" data-i18n="cloud.login.initial"></output>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="cloud-callback-url" data-i18n="cloud.callback.label"></label><input id="cloud-callback-url" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="cloud.callback.hint"></span></div>
+            <button id="cloud-callback-submit" class="button" type="button" data-i18n="cloud.callback.submit"></button>
+            <button id="cloud-callback-clipboard" class="button" type="button" data-i18n="cloud.callback.clipboard"></button>
+          </div>
+          <output id="cloud-callback-status" role="status" aria-live="polite" data-i18n="cloud.callback.initial"></output>
+          <div class="ring-discovery-controls">
+            <button id="cloud-switch-on" class="button primary" type="button" data-i18n="cloud.switch.on"></button>
+            <button id="cloud-switch-off" class="button" type="button" data-i18n="cloud.switch.off"></button>
+          </div>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="cloud-device-command" data-i18n="cloud.device.label"></label><select id="cloud-device-command"></select><span class="hint" data-i18n="cloud.device.hint"></span></div>
+            <button id="cloud-device-run" class="button primary" type="button" data-i18n="cloud.device.run"></button>
+          </div>
+          <ol id="cloud-mcp-steps" class="list cloud-mcp-steps" aria-live="polite"></ol>
+          <output id="cloud-mcp-result" class="cloud-mcp-result" role="status" aria-live="polite" data-i18n="cloud.result.initial"></output>
+        </section>
+        <section class="panel edge-panel" aria-labelledby="edge-heading">
+          <h2 id="edge-heading" data-i18n="edge.heading"></h2>
+          <p class="section-intro" data-i18n="edge.intro"></p>
+          <div class="edge-overview"><span id="edge-online" class="status" data-i18n="edge.online.unknown"></span><span id="edge-heartbeat" class="edge-summary" data-i18n="edge.heartbeat.initial"></span><span id="edge-pending" class="edge-summary" data-i18n="edge.pending.initial"></span></div>
+          <div class="edge-controls">
+            <button id="edge-disconnect" class="button" type="button" data-i18n="edge.disconnect"></button>
+            <button id="edge-reconnect" class="button" type="button" data-i18n="edge.reconnect"></button>
+            <button id="edge-heartbeat-button" class="button" type="button" data-i18n="edge.heartbeatButton"></button>
+            <button id="edge-scene" class="button primary" type="button" data-i18n="edge.scene"></button>
+          </div>
+          <p class="edge-summary" data-i18n="edge.sceneNote"></p>
+          <h3 data-i18n="edge.latestHeading"></h3>
+          <ul id="edge-receipts" class="list edge-receipts" aria-live="polite"></ul>
+          <div id="edge-batch-wrap" hidden><h3 data-i18n="edge.batchHeading"></h3><ul id="edge-batch-results" class="list edge-receipts" aria-live="polite"></ul></div>
+        </section>
+        <section aria-labelledby="devices-heading">
+          <div class="section-heading"><div><h2 id="devices-heading" data-i18n="devices.heading"></h2><p class="section-intro" data-i18n="devices.intro"></p></div><button id="refresh" class="button small" type="button" data-i18n="common.refreshStatus"></button></div>
+          <div id="devices" class="grid"></div>
+        </section>
+        <div class="columns">
+          <section class="panel section-panel" aria-labelledby="schedule-heading">
+            <h2 id="schedule-heading" data-i18n="schedule.heading"></h2><p class="section-intro" data-i18n="schedule.intro"></p>
+            <form id="schedule-form" class="form-grid">
+              <div class="field"><label for="schedule-device" data-i18n="schedule.device"></label><select id="schedule-device" required></select></div>
+              <div class="field"><label for="schedule-action" data-i18n="schedule.action"></label><select id="schedule-action" required></select></div>
+              <div id="schedule-param-field" class="field" hidden><label id="schedule-param-label" for="schedule-param" data-i18n="schedule.param"></label><input id="schedule-param"></div>
+              <div class="field"><label for="schedule-at" data-i18n="schedule.at"></label><input id="schedule-at" type="text" inputmode="numeric" autocomplete="off" pattern="\d{4}-\d{2}-\d{2} \d{2}:\d{2}" maxlength="16" required data-i18n-placeholder="schedule.atPlaceholder"></div>
+              <div class="wide"><button class="button primary" type="submit" data-i18n="schedule.submit"></button></div>
+            </form>
+            <h3 style="margin-top:25px" data-i18n="schedule.pendingHeading"></h3><ul id="schedules" class="list"></ul>
+          </section>
+          <section class="panel section-panel" aria-labelledby="audit-heading">
+            <h2 id="audit-heading" data-i18n="audit.heading"></h2><p class="section-intro" data-i18n="audit.intro"></p><ul id="audit" class="list audit"></ul>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div id="dialog-root"></div>
+  <script>
+    "use strict";
+
+    // All user-visible text comes from the mapping table (public/i18n-map.mjs, loaded as a module and exposed as
+    // globalThis.HomeMcpI18n). Before it loads, tr() returns the key; the "home-mcp-i18n-ready" event re-renders.
+    function tr(key, params) {
+      const i18n = globalThis.HomeMcpI18n;
+      return i18n && typeof i18n.t === "function" ? i18n.t(key, params) : key;
+    }
+    const META = {
+      robot_vacuum: { icon: "◇", actions: ["start", "pause", "dock"] },
+      air_conditioner: { icon: "❄", actions: ["on", "off", "set_temperature"] },
+      front_door: { icon: "▣", actions: ["lock", "unlock"] },
+      alarm_clock: { icon: "◷", actions: ["set_alarm", "clear_alarm"] },
+      living_light: { icon: "☼", actions: ["on", "off"] },
+      camera: { icon: "◎", actions: ["arm", "disarm"] },
+      dehumidifier: { icon: "♧", actions: ["on", "off", "set_target_humidity"] }
+    };
+    const hasMeta = id => Object.prototype.hasOwnProperty.call(META, id);
+    const SAFE_SCHEDULE = {
+      robot_vacuum: ["start", "pause", "dock"],
+      air_conditioner: ["on", "off", "set_temperature"],
+      front_door: ["lock"],
+      alarm_clock: ["set_alarm", "clear_alarm"],
+      living_light: ["on", "off"],
+      camera: ["arm"],
+      dehumidifier: ["on", "off", "set_target_humidity"]
+    };
+    const PARAMS = {
+      set_temperature: { key: "temperature", labelKey: "param.temperature", type: "number", min: 16, max: 30, placeholder: "24" },
+      set_alarm: { key: "time", labelKey: "param.time", type: "time" },
+      set_target_humidity: { key: "humidity", labelKey: "param.humidity", type: "number", min: 30, max: 80, placeholder: "55" }
+    };
+    const el = id => document.getElementById(id);
+    let token = null;
+    let state = null;
+    let busy = false;
+    let nextRpcId = 1;
+    let lastBatchResults = null;
+    let ringDeviceCount = 0;
+    let ringOperatorGeneration = 0;
+    let ringOperatorDiagnostic = freshRingOperatorDiagnostic();
+
+    function freshRingOperatorDiagnostic() {
+      return { currentLength: 0, hasWhitespace: false, inputAt: null, operation: "NONE", submittedLength: null, submittedAt: null, clearedAt: null, phase: "IDLE", gate: "NOT_CHECKED", resultCode: "NOT_STARTED" };
+    }
+    function renderRingOperatorDiagnostic() {
+      const info = ringOperatorDiagnostic;
+      const pick = (prefix, names) => Object.fromEntries(names.map(name => [name, tr(prefix + name)]));
+      const operations = pick("ring.diag.op.", ["NONE", "IMPORT", "DISCOVERY", "HISTORY", "CAPTURE"]);
+      const gates = pick("ring.diag.gate.", ["NOT_CHECKED", "PENDING", "PASSED", "DENIED", "UNAVAILABLE", "LIMITED", "UNKNOWN"]);
+      const phases = pick("ring.diag.phase.", ["IDLE", "NOT_SENT", "SENDING", "COMPLETE"]);
+      const outcomes = pick("ring.diag.outcome.", ["LOCAL_IMPORT_OK", "DISCOVERY_OK", "HISTORY_OK", "CAPTURE_PENDING", "DISCOVERY_HTTP_401", "DISCOVERY_HTTP_403", "DISCOVERY_TIMEOUT", "DISCOVERY_NETWORK_ERROR", "DISCOVERY_NOT_SUCCESSFUL", "INPUT_EMPTY", "NOT_STARTED", "PENDING"]);
+      const at = value => value ? formatTime(value) : tr("ring.diag.none");
+      const sent = info.submittedAt ? tr("ring.diag.sent", { length: info.submittedLength, at: at(info.submittedAt) }) : tr("ring.diag.notSent");
+      el("ring-operator-diagnostic").textContent = tr("ring.diag.text", { length: info.currentLength, whitespace: info.hasWhitespace ? tr("ring.diag.whitespace") : "", inputAt: at(info.inputAt), operation: operations[info.operation], sent, clearedAt: at(info.clearedAt), phase: phases[info.phase], gate: gates[info.gate], outcome: outcomes[info.resultCode] || tr("ring.diag.outcome.fallback"), code: info.resultCode });
+    }
+    function rememberRingOperatorInput() {
+      ringOperatorDiagnostic.currentLength = el("ring-operator-passcode").value.length;
+      ringOperatorDiagnostic.hasWhitespace = /\s/.test(el("ring-operator-passcode").value);
+      ringOperatorDiagnostic.inputAt = new Date().toISOString();
+      renderRingOperatorDiagnostic();
+    }
+    function beginRingOperatorAttempt(operation) {
+      const length = el("ring-operator-passcode").value.length;
+      ringOperatorDiagnostic.currentLength = length;
+      ringOperatorDiagnostic.hasWhitespace = /\s/.test(el("ring-operator-passcode").value);
+      ringOperatorDiagnostic.operation = operation;
+      ringOperatorDiagnostic.submittedLength = length;
+      ringOperatorDiagnostic.submittedAt = length === 0 ? null : new Date().toISOString();
+      ringOperatorDiagnostic.clearedAt = null;
+      ringOperatorDiagnostic.phase = length === 0 ? "NOT_SENT" : "SENDING";
+      ringOperatorDiagnostic.gate = length === 0 ? "NOT_CHECKED" : "PENDING";
+      ringOperatorDiagnostic.resultCode = length === 0 ? "INPUT_EMPTY" : "PENDING";
+      renderRingOperatorDiagnostic();
+      return length === 0 ? null : ringOperatorGeneration;
+    }
+    function clearRingOperatorValue(generation) {
+      if (generation !== ringOperatorGeneration) return;
+      el("ring-operator-passcode").value = "";
+      ringOperatorDiagnostic.currentLength = 0;
+      ringOperatorDiagnostic.hasWhitespace = false;
+      ringOperatorDiagnostic.clearedAt = new Date().toISOString();
+      renderRingOperatorDiagnostic();
+    }
+    function finishRingOperatorAttempt(generation, code) {
+      if (generation !== ringOperatorGeneration) return;
+      const results = {
+        LOCAL_IMPORT_OK: "PASSED", DISCOVERY_OK: "PASSED", HISTORY_OK: "PASSED", CAPTURE_PENDING: "PASSED",
+        RING_OPERATOR_DENIED: "DENIED", RING_OPERATOR_UNAVAILABLE: "UNAVAILABLE", RING_OPERATOR_RATE_LIMIT: "LIMITED",
+        IMPORT_BUSY: "PASSED", DISCOVERY_BUSY: "PASSED", HISTORY_BUSY: "PASSED", CLIPBOARD_UNAVAILABLE: "PASSED", RING_TOKEN_INVALID: "PASSED",
+        TOKEN_UNAVAILABLE: "PASSED", TOKEN_INVALID: "PASSED", DEVICE_NOT_FOUND: "PASSED",
+        DISCOVERY_HTTP_401: "PASSED", DISCOVERY_HTTP_403: "PASSED", DISCOVERY_HTTP_404: "PASSED",
+        DISCOVERY_TIMEOUT: "PASSED", DISCOVERY_NETWORK_ERROR: "PASSED", DISCOVERY_NOT_SUCCESSFUL: "PASSED",
+        HISTORY_HTTP_401: "PASSED", HISTORY_HTTP_403: "PASSED", HISTORY_HTTP_404: "PASSED",
+      };
+      const known = Object.prototype.hasOwnProperty.call(results, code);
+      ringOperatorDiagnostic.resultCode = known ? Object.keys(results).find(value => value === code) : "OTHER_ERROR";
+      ringOperatorDiagnostic.gate = known ? results[code] : "UNKNOWN";
+      ringOperatorDiagnostic.phase = "COMPLETE";
+      renderRingOperatorDiagnostic();
+    }
+    function resetRingOperatorDiagnostic() {
+      ringOperatorGeneration++;
+      ringOperatorDiagnostic = freshRingOperatorDiagnostic();
+      renderRingOperatorDiagnostic();
+    }
+
+    function setRingDeviceOptions(count) {
+      const choices = ['<option value="">' + (count === 0 ? tr("ring.historyDevice.queryFirst") : tr("ring.historyDevice.choose")) + '</option>'];
+      for (let ordinal = 1; ordinal <= count; ordinal++) {
+        choices.push(`<option value="${ordinal}">${tr("ring.historyDevice.item", { n: ordinal })}</option>`);
+      }
+      el("ring-history-device").innerHTML = choices.join("");
+    }
+
+    function showNotice(message, isError = false) {
+      const node = el("notice");
+      node.textContent = message;
+      node.className = "notice show" + (isError ? " error" : "");
+    }
+    function clearNotice() { el("notice").className = "notice"; el("notice").textContent = ""; }
+    function setBusy(value) {
+      busy = value;
+      document.querySelectorAll("button:not([data-wifi-authorize]):not([data-wifi-revoke])").forEach(button => { if (button.id !== "logout") button.disabled = value; });
+      el("ring-operator-passcode").disabled = value;
+      if (!value && state) renderEdge();
+    }
+    async function request(path, method = "GET", body, extraHeaders = {}) {
+      const headers = { Accept: "application/json" };
+      if (body !== undefined) headers["Content-Type"] = "application/json";
+      if (token) headers.Authorization = "Bearer " + token;
+      Object.assign(headers, extraHeaders);
+      const response = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: "same-origin" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401 && path !== "/api/login") logout(false);
+        const error = new Error(data.message || data.error || `HTTP ${response.status}`);
+        error.code = data.code || data.error_code || data.error || "HTTP_ERROR";
+        throw error;
+      }
+      return data;
+    }
+    globalThis.cloudMcpPanelPorts = Object.freeze({
+      authorization: () => (token ? "Bearer " + token : null),
+      unauthorized: () => logout(false)
+    });
+    globalThis.householdWifiPermissionPorts = Object.freeze({
+      status: () => request('/api/wifi-trust/status'),
+      consent: input => request('/api/wifi-trust/consent', 'POST', input),
+      revoke: input => request('/api/wifi-trust/revoke', 'POST', input)
+    });
+    async function callSimulatedDeviceTool(name, args) {
+      const response = await request("/mcp", "POST", {
+        jsonrpc: "2.0",
+        id: nextRpcId++,
+        method: "tools/call",
+        params: { name, arguments: args }
+      }, {
+        Accept: "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2025-11-25"
+      });
+      if (response.jsonrpc !== "2.0" || response.error || response.result?.isError !== false || response.result?.structuredContent?.simulated !== true) {
+        throw new Error(tr("notice.mcpUnverified"));
+      }
+      return response.result.structuredContent;
+    }
+    const HOME_ARRIVAL_COMMANDS = [
+      { deviceId: "living_light", action: "on" },
+      { deviceId: "air_conditioner", action: "on" },
+      { deviceId: "dehumidifier", action: "on" }
+    ];
+    function edgeStatusLabel(status) {
+      const labels = {
+        simulated_applied: tr("edge.status.simulated_applied"),
+        queued: tr("edge.status.queued"),
+        expired: tr("edge.status.expired"),
+        denied: tr("edge.status.denied"),
+        dropped: tr("edge.status.dropped"),
+        accepted: tr("edge.status.accepted")
+      };
+      return labels[status] || (status ? tr("edge.status.undetermined", { status }) : tr("edge.status.none"));
+    }
+    function renderEdgeResult(item) {
+      const row = make("li");
+      const deviceId = item?.deviceId;
+      const action = item?.action;
+      row.append(make("strong", "", action ? `${nameFor(deviceId)} · ${actionFor(deviceId, action)}` : nameFor(deviceId)));
+      row.append(make("small", "", tr("edge.result.simulated", { status: edgeStatusLabel(item?.status) })));
+      const details = [];
+      if (item?.commandId) details.push(tr("edge.detail.command", { id: item.commandId }));
+      if (item?.at) details.push(tr("edge.detail.time", { at: formatTime(item.at) }));
+      if (item?.expiresAt && item?.status === "queued") details.push(tr("edge.detail.expires", { at: formatTime(item.expiresAt) }));
+      if (details.length) row.append(make("small", "", details.join(" · ")));
+      if (typeof item?.signalSent === "boolean" || typeof item?.gatewayAck === "boolean"
+        || typeof item?.deviceObserved === "boolean") {
+        const signal = item.signalSent === true ? tr("edge.signal.sent") : tr("edge.signal.none");
+        const ack = item.gatewayAck === true ? tr("edge.ack.yes") : tr("edge.ack.no");
+        const observed = item.deviceObserved === true ? tr("edge.observed.yes") : tr("edge.observed.no");
+        row.append(make("small", "", `${signal} · ${ack} · ${observed}`));
+      }
+      return row;
+    }
+    function renderEdge() {
+      const edge = state?.edge;
+      const online = edge?.online === true;
+      const heartbeatFresh = online && edge?.heartbeatFresh === true;
+      const onlineNode = el("edge-online");
+      onlineNode.textContent = edge ? (heartbeatFresh ? tr("edge.online.fresh") : online ? tr("edge.online.waiting") : tr("edge.online.offline")) : tr("edge.online.unknown");
+      onlineNode.className = "status" + (heartbeatFresh ? " ready" : "");
+      el("edge-heartbeat").textContent = tr("edge.heartbeat", { at: edge?.lastHeartbeatAt ? formatTime(edge.lastHeartbeatAt) : tr("ring.diag.none") });
+      el("edge-pending").textContent = tr("edge.pending", { count: Number.isInteger(edge?.pendingCount) ? edge.pendingCount : "—" });
+      el("edge-disconnect").disabled = busy || !edge || !online;
+      el("edge-reconnect").disabled = busy || !edge || online;
+      el("edge-heartbeat-button").disabled = busy || !edge || !online;
+      const receipts = Array.isArray(edge?.receipts) ? edge.receipts : [];
+      const queue = Array.isArray(edge?.queue) ? edge.queue : [];
+      const byDevice = new Map();
+      for (const item of receipts) if (item?.deviceId) byDevice.set(item.deviceId, item);
+      for (const item of queue) if (item?.deviceId) byDevice.set(item.deviceId, { ...item, status: "queued" });
+      const list = el("edge-receipts"); list.replaceChildren();
+      for (const device of (Array.isArray(state?.devices) ? state.devices : [])) {
+        list.append(renderEdgeResult(byDevice.get(device.id) || { deviceId: device.id }));
+      }
+      if (!list.children.length) list.append(make("li", "empty", tr("edge.receipts.empty")));
+      const batchWrap = el("edge-batch-wrap");
+      batchWrap.hidden = !Array.isArray(lastBatchResults);
+      const batchList = el("edge-batch-results"); batchList.replaceChildren();
+      if (Array.isArray(lastBatchResults)) {
+        for (const item of lastBatchResults) batchList.append(renderEdgeResult(item));
+      }
+    }
+    function logout(notify = true) {
+      token = null;
+      state = null;
+      lastBatchResults = null;
+      el("dashboard").hidden = true;
+      el("login-view").hidden = false;
+      el("logout").hidden = true;
+      el("passcode").value = "";
+      el("ring-operator-passcode").value = "";
+      resetRingOperatorDiagnostic();
+      el("ring-import-status").textContent = tr("ring.import.initial");
+      el("ring-discovery-status").textContent = tr("ring.discovery.initial");
+      ringDeviceCount = 0;
+      setRingDeviceOptions(0);
+      el("ring-history-status").textContent = tr("ring.history.initial");
+      el("dialog-root").replaceChildren();
+      if (notify) showNotice(tr("notice.loggedOut"), false);
+      el("passcode").focus();
+    }
+    async function refresh() {
+      state = await request("/api/state");
+      render();
+      renderLocalRing();
+    }
+    async function importRingToken() {
+      const attempt = beginRingOperatorAttempt("IMPORT");
+      if (attempt === null) { el("ring-import-status").textContent = tr("ring.import.needOperator"); return; }
+      let operatorPasscode = el("ring-operator-passcode").value;
+      clearRingOperatorValue(attempt);
+      el("ring-import-status").textContent = tr("ring.import.running");
+      try {
+        const result = await request("/api/ring/import-clipboard", "POST", undefined, { "X-Ring-Operator-Passcode": operatorPasscode });
+        if (result.ok !== true || result.configured !== true) throw new Error("IMPORT_FAILED");
+        finishRingOperatorAttempt(attempt, "LOCAL_IMPORT_OK");
+        el("ring-import-status").textContent = tr("ring.import.done", { at: formatTime(result.imported_at) });
+        el("ring-discovery-status").textContent = tr("ring.discovery.afterImport");
+        ringDeviceCount = 0;
+        setRingDeviceOptions(0);
+        el("ring-history-status").textContent = tr("ring.history.initial");
+      } catch (error) {
+        finishRingOperatorAttempt(attempt, error.code);
+        const messages = {
+          RING_OPERATOR_UNAVAILABLE: tr("ring.err.operatorUnavailable"),
+          RING_OPERATOR_DENIED: tr("ring.err.operatorDenied"),
+          RING_OPERATOR_RATE_LIMIT: tr("ring.err.operatorRateLimit"),
+          IMPORT_BUSY: tr("ring.import.err.busy"),
+          CLIPBOARD_UNAVAILABLE: tr("ring.err.clipboardUnavailable"),
+          RING_TOKEN_INVALID: tr("ring.import.err.tokenInvalid"),
+        };
+        el("ring-import-status").textContent = tr("ring.import.failed", { reason: messages[error.code] || tr("ring.import.err.fallback") });
+      } finally {
+        operatorPasscode = "";
+        clearRingOperatorValue(attempt);
+      }
+    }
+    async function discoverRing() {
+      const attempt = beginRingOperatorAttempt("DISCOVERY");
+      if (attempt === null) { el("ring-discovery-status").textContent = tr("ring.discovery.needOperator"); return; }
+      let operatorPasscode = el("ring-operator-passcode").value;
+      clearRingOperatorValue(attempt);
+      el("ring-discovery-status").textContent = tr("ring.discovery.running");
+      ringDeviceCount = 0;
+      setRingDeviceOptions(0);
+      el("ring-history-status").textContent = tr("ring.history.needDiscovery");
+      try {
+        const result = await request("/api/ring/discovery", "GET", undefined, { "X-Ring-Operator-Passcode": operatorPasscode });
+        if (result.ok !== true || !Number.isSafeInteger(result.device_count) || result.device_count < 0 || result.device_count > 256) throw new Error("INVALID_DISCOVERY_RESULT");
+        finishRingOperatorAttempt(attempt, "DISCOVERY_OK");
+        ringDeviceCount = result.device_count;
+        setRingDeviceOptions(ringDeviceCount);
+        el("ring-discovery-status").textContent = tr("ring.discovery.done", { count: result.device_count, at: formatTime(result.checked_at) });
+      } catch (error) {
+        finishRingOperatorAttempt(attempt, error.code);
+        const messages = {
+          RING_OPERATOR_UNAVAILABLE: tr("ring.err.operatorUnavailable"),
+          RING_OPERATOR_DENIED: tr("ring.err.operatorDenied"),
+          RING_OPERATOR_RATE_LIMIT: tr("ring.err.operatorRateLimit"),
+          DISCOVERY_BUSY: tr("ring.discovery.err.busy"),
+          TOKEN_UNAVAILABLE: tr("ring.discovery.err.tokenUnavailable"),
+          TOKEN_INVALID: tr("ring.discovery.err.tokenInvalid"),
+        };
+        el("ring-discovery-status").textContent = tr("ring.discovery.failed", { reason: messages[error.code] || tr("ring.discovery.err.fallback") });
+      } finally {
+        operatorPasscode = "";
+        clearRingOperatorValue(attempt);
+      }
+    }
+    async function captureRingReceipt() {
+      const attempt = beginRingOperatorAttempt("CAPTURE");
+      if (attempt === null) { el("ring-capture-status").textContent = tr("ring.capture.needOperator"); return; }
+      let operatorPasscode = el("ring-operator-passcode").value;
+      clearRingOperatorValue(attempt);
+      el("ring-capture").disabled = true;
+      el("ring-capture-status").textContent = tr("ring.capture.running");
+      try {
+        const result = await request("/api/ring/discovery-receipt", "POST", undefined, {
+          "X-Ring-Operator-Passcode": operatorPasscode, "X-Ring-Capture-Intent": "pending-receipt",
+        });
+        if (result.classification !== "CANDIDATE_REQUIRES_VIDEO_AND_OPERATOR_ACCEPTANCE"
+          || !/^sha256:[a-f0-9]{64}$/.test(result.receipt_id) || !Number.isSafeInteger(result.device_count)
+          || result.device_count < 0 || result.device_count > 256) throw new Error("INVALID_RECEIPT");
+        finishRingOperatorAttempt(attempt, "CAPTURE_PENDING");
+        el("ring-capture-status").textContent = tr("ring.capture.done", { receiptId: result.receipt_id, count: result.device_count, at: formatTime(result.captured_at) });
+      } catch (error) {
+        finishRingOperatorAttempt(attempt, error.code);
+        const diagnostics = {
+          DISCOVERY_HTTP_401: tr("ring.capture.err.DISCOVERY_HTTP_401"),
+          DISCOVERY_HTTP_403: tr("ring.capture.err.DISCOVERY_HTTP_403"),
+          DISCOVERY_TIMEOUT: tr("ring.capture.err.DISCOVERY_TIMEOUT"),
+          DISCOVERY_NETWORK_ERROR: tr("ring.capture.err.DISCOVERY_NETWORK_ERROR"),
+          DISCOVERY_NOT_SUCCESSFUL: tr("ring.capture.err.DISCOVERY_NOT_SUCCESSFUL"),
+          RECEIPT_PUBLISH_OUTCOME_UNKNOWN: tr("ring.capture.err.RECEIPT_PUBLISH_OUTCOME_UNKNOWN"),
+        };
+        el("ring-capture-status").textContent = Object.prototype.hasOwnProperty.call(diagnostics, error.code)
+          ? diagnostics[error.code] : tr("ring.capture.err.fallback");
+      } finally {
+        operatorPasscode = "";
+        clearRingOperatorValue(attempt);
+        el("ring-capture").disabled = false;
+      }
+    }
+    async function probeRingHistory() {
+      const deviceOrdinal = Number(el("ring-history-device").value);
+      if (!Number.isSafeInteger(deviceOrdinal) || deviceOrdinal < 1 || deviceOrdinal > ringDeviceCount) {
+        el("ring-history-status").textContent = tr("ring.history.needDevice");
+        return;
+      }
+      const attempt = beginRingOperatorAttempt("HISTORY");
+      if (attempt === null) { el("ring-history-status").textContent = tr("ring.history.needOperator"); return; }
+      let operatorPasscode = el("ring-operator-passcode").value;
+      clearRingOperatorValue(attempt);
+      el("ring-history-status").textContent = tr("ring.history.running");
+      try {
+        const result = await request(`/api/ring/history?ordinal=${deviceOrdinal}`, "GET", undefined, { "X-Ring-Operator-Passcode": operatorPasscode });
+        if (result.ok !== true || result.source !== "official_event_history_api" || !Number.isSafeInteger(result.motion_count)) throw new Error("INVALID_HISTORY_RESULT");
+        finishRingOperatorAttempt(attempt, "HISTORY_OK");
+        const latest = result.latest_motion_at ? tr("ring.history.latest", { at: formatTime(result.latest_motion_at) }) : "";
+        el("ring-history-status").textContent = tr("ring.history.done", { count: result.motion_count, latest });
+      } catch (error) {
+        finishRingOperatorAttempt(attempt, error.code);
+        const messages = {
+          RING_OPERATOR_UNAVAILABLE: tr("ring.err.operatorUnavailable"),
+          RING_OPERATOR_DENIED: tr("ring.err.operatorDenied"),
+          RING_OPERATOR_RATE_LIMIT: tr("ring.err.operatorRateLimit"),
+          HISTORY_BUSY: tr("ring.history.err.busy"),
+          TOKEN_UNAVAILABLE: tr("ring.history.err.tokenUnavailable"),
+          TOKEN_INVALID: tr("ring.history.err.tokenInvalid"),
+          HISTORY_HTTP_401: tr("ring.history.err.http401"),
+          HISTORY_HTTP_403: tr("ring.history.err.http403"),
+          HISTORY_HTTP_404: tr("ring.history.err.http404"),
+          DEVICE_NOT_FOUND: tr("ring.history.err.deviceNotFound"),
+        };
+        el("ring-history-status").textContent = tr("ring.history.failed", { reason: messages[error.code] || tr("ring.history.err.fallback") });
+      } finally {
+        operatorPasscode = "";
+        clearRingOperatorValue(attempt);
+      }
+    }
+    function renderLocalRing() {
+      const local = state?.localRing;
+      const enabled = local?.mode === "local_simulation";
+      el("local-ring-panel").hidden = !enabled;
+      el("ring-official-panel").hidden = enabled;
+      if (!enabled) return;
+      const binding = local.binding || {};
+      const identities = { unlinked: tr("localRing.identity.unlinked"), authenticated: tr("localRing.identity.authenticated"), revoked: tr("localRing.identity.revoked"), logged_out: tr("localRing.identity.logged_out") };
+      el("local-ring-status").textContent = tr("localRing.status", { identity: binding.identity === "authenticated" && binding.authorized !== true ? tr("localRing.authExpired") : identities[binding.identity] || tr("localRing.authPending"), worker: local.workerOnline ? tr("localRing.workerOnline") : tr("localRing.workerOffline") });
+      const list = el("local-ring-receipts");
+      list.replaceChildren();
+      const labels = { queued: tr("localRing.cmd.queued"), applying: tr("localRing.cmd.applying"), executed_in_simulator: tr("localRing.cmd.executed_in_simulator"), execution_unconfirmed: tr("localRing.cmd.execution_unconfirmed"), denied: tr("localRing.cmd.denied"), expired: tr("localRing.cmd.expired") };
+      for (const command of local.commands || []) {
+        const receipt = command.receipt;
+        const confirmed = command.status === "executed_in_simulator"
+          && typeof command.commandId === "string" && command.commandId.length > 0
+          && typeof command.requestId === "string" && command.requestId.length > 0
+          && receipt?.commandId === command.commandId && receipt?.requestId === command.requestId
+          && receipt?.status === "executed_in_simulator" && receipt?.gatewayAck === true
+          && receipt?.simulated === true && receipt?.deviceObserved === false
+          && typeof receipt?.auditId === "string" && receipt.auditId.length > 0;
+        const label = command.status === "executed_in_simulator" && !confirmed ? tr("localRing.cmd.unmatched") : labels[command.status] || tr("localRing.cmd.unknown");
+        list.append(make("li", "", tr("localRing.cmd.row", { label, commandId: command.commandId || "—", requestId: command.requestId || "—" })));
+      }
+    }
+    async function localRingOperation(operation, body = {}) {
+      await request(`/api/local-ring/${operation}`, "POST", body, { "X-Local-Ring-Intent": "simulation" });
+      await refresh();
+    }
+    function nameFor(id) { return hasMeta(id) ? tr(`device.${id}.name`) : id || tr("device.unknown"); }
+    function deviceLabel(device) { return hasMeta(device?.id) ? tr(`device.${device.id}.label`) : device?.label || nameFor(device?.id); }
+    function actionFor(deviceId, action) { return hasMeta(deviceId) && META[deviceId].actions.includes(action) ? tr(`device.${deviceId}.action.${action}`) : action || tr("device.unknownAction"); }
+    function formatTime(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value || "—") : new Intl.DateTimeFormat(globalThis.HomeMcpI18n?.locale || "en-US", { dateStyle: "short", timeStyle: "short" }).format(date);
+    }
+    function prettyState(value) {
+      if (!value || typeof value !== "object") return tr("device.noState");
+      const entries = Object.entries(value);
+      return entries.length ? entries.map(([key, entry]) => `${key}: ${typeof entry === "object" ? JSON.stringify(entry) : entry}`).join(" · ") : tr("device.noState");
+    }
+    function make(tag, className, content) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (content !== undefined) node.textContent = String(content);
+      return node;
+    }
+    function deviceActions(device) {
+      if (Array.isArray(device.actions)) return device.actions;
+      if (device.actions && typeof device.actions === "object") return Object.keys(device.actions);
+      return hasMeta(device.id) ? [...META[device.id].actions] : [];
+    }
+    function renderDevices() {
+      const container = el("devices");
+      container.replaceChildren();
+      const devices = Array.isArray(state?.devices) ? state.devices : [];
+      el("device-count").textContent = devices.length;
+      el("paired-count").textContent = devices.filter(device => device.paired).length;
+      for (const device of devices) {
+        const meta = hasMeta(device.id)
+          ? { icon: META[device.id].icon, label: deviceLabel(device), note: tr(`device.${device.id}.note`) }
+          : { icon: "□", label: device.label || device.id, note: tr("device.genericNote") };
+        const card = make("article", "panel device");
+        const top = make("div", "device-top");
+        const icon = make("span", "device-icon", meta.icon); icon.setAttribute("aria-hidden", "true");
+        const title = make("div", "device-title"); title.append(make("h3", "", meta.label), make("small", "", meta.note));
+        const status = make("span", "status" + (device.paired ? " ready" : ""), device.paired ? tr("device.paired") : tr("device.unpaired"));
+        top.append(icon, title, status);
+        const current = make("div", "device-state", prettyState(device.state));
+        current.setAttribute("aria-label", tr("device.stateAria", { name: meta.label }));
+        const buttons = make("div", "device-actions");
+        if (!device.paired) {
+          const button = make("button", "button primary small", tr("device.pair")); button.type = "button";
+          button.addEventListener("click", () => run(() => pairDevice(device)));
+          buttons.append(button);
+        } else {
+          for (const action of deviceActions(device)) {
+            const highRisk = device.id === "front_door" && action === "unlock";
+            const button = make("button", "button small" + (highRisk ? " danger" : ""), actionFor(device.id, action));
+            button.type = "button";
+            button.addEventListener("click", () => run(() => performAction(device, action)));
+            buttons.append(button);
+          }
+        }
+        const footnote = device.id === "air_conditioner"
+          ? tr("device.footnoteAc", { id: device.id })
+          : tr("device.footnote", { id: device.id });
+        card.append(top, current, buttons, make("div", "device-footnote", footnote));
+        container.append(card);
+      }
+    }
+    function renderScheduleOptions() {
+      const devices = Array.isArray(state?.devices) ? state.devices : [];
+      const deviceSelect = el("schedule-device");
+      const selected = deviceSelect.value;
+      deviceSelect.replaceChildren();
+      const placeholder = make("option", "", tr("schedule.chooseDevice")); placeholder.value = ""; deviceSelect.append(placeholder);
+      for (const device of devices.filter(item => item.paired && SAFE_SCHEDULE[item.id])) {
+        const option = make("option", "", deviceLabel(device)); option.value = device.id; deviceSelect.append(option);
+      }
+      if ([...deviceSelect.options].some(option => option.value === selected)) deviceSelect.value = selected;
+      renderScheduleActions();
+    }
+    function renderScheduleActions() {
+      const deviceId = el("schedule-device").value;
+      const actionSelect = el("schedule-action");
+      const selected = actionSelect.value;
+      actionSelect.replaceChildren();
+      const placeholder = make("option", "", tr("schedule.chooseAction")); placeholder.value = ""; actionSelect.append(placeholder);
+      const actualDevice = state?.devices?.find(device => device.id === deviceId);
+      const available = actualDevice ? deviceActions(actualDevice) : [];
+      for (const action of (SAFE_SCHEDULE[deviceId] || []).filter(item => available.includes(item))) {
+        const option = make("option", "", actionFor(deviceId, action)); option.value = action; actionSelect.append(option);
+      }
+      if ([...actionSelect.options].some(option => option.value === selected)) actionSelect.value = selected;
+      renderParameterField();
+    }
+    function renderParameterField() {
+      const config = PARAMS[el("schedule-action").value];
+      const wrapper = el("schedule-param-field");
+      wrapper.hidden = !config;
+      const input = el("schedule-param");
+      input.required = !!config;
+      if (!config) { input.value = ""; return; }
+      el("schedule-param-label").textContent = tr(config.labelKey);
+      input.type = config.type;
+      input.min = config.min === undefined ? "" : String(config.min);
+      input.max = config.max === undefined ? "" : String(config.max);
+      input.placeholder = config.placeholder || "";
+    }
+    function renderSchedules() {
+      const list = el("schedules"); list.replaceChildren();
+      const schedules = Array.isArray(state?.schedules) ? state.schedules : [];
+      el("schedule-count").textContent = schedules.length;
+      if (!schedules.length) { list.append(make("li", "empty", tr("schedule.empty"))); return; }
+      for (const item of schedules) {
+        const row = make("li");
+        const body = make("div");
+        body.append(make("strong", "", `${nameFor(item.deviceId)} · ${actionFor(item.deviceId, item.action)}`), make("small", "", `${formatTime(item.at)} · ${JSON.stringify(item.parameters || {})}`));
+        const cancel = make("button", "button small", tr("common.cancel")); cancel.type = "button";
+        cancel.setAttribute("aria-label", tr("schedule.cancelAria", { device: nameFor(item.deviceId), action: actionFor(item.deviceId, item.action) }));
+        cancel.addEventListener("click", () => run(async () => { await request(`/api/schedules/${encodeURIComponent(item.id)}`, "DELETE"); await refresh(); showNotice(tr("notice.scheduleCancelled"), false); }));
+        row.append(body, cancel); list.append(row);
+      }
+    }
+    function renderAudit() {
+      const list = el("audit"); list.replaceChildren();
+      const entries = Array.isArray(state?.audit) ? [...state.audit].reverse().slice(0, 30) : [];
+      if (!entries.length) { list.append(make("li", "empty", tr("audit.empty"))); return; }
+      for (const item of entries) {
+        const row = make("li"); const top = make("div", "audit-top");
+        top.append(make("strong", "", `${nameFor(item.deviceId)} · ${actionFor(item.deviceId, item.action)}`));
+        const time = make("time", "", formatTime(item.at)); time.dateTime = item.at || ""; top.append(time);
+        row.append(top, make("small", "", tr("audit.row", { outcome: item.outcome || tr("audit.recorded"), origin: item.origin || tr("audit.originDefault") })));
+        list.append(row);
+      }
+    }
+    function render() { renderEdge(); renderDevices(); renderScheduleOptions(); renderSchedules(); renderAudit(); }
+
+    function openDialog({ title, description, code, codeLabel, codeRevealLabel, inputLabel, inputType = "text", alert, confirmLabel = tr("common.confirm") }) {
+      return new Promise(resolve => {
+        const root = el("dialog-root"); root.replaceChildren();
+        const backdrop = make("div", "dialog-backdrop");
+        const dialog = make("form", "panel dialog"); dialog.setAttribute("role", "dialog"); dialog.setAttribute("aria-modal", "true");
+        const heading = make("h2", "", title); heading.id = "dialog-title"; dialog.setAttribute("aria-labelledby", heading.id);
+        dialog.append(heading, make("p", "", description));
+        if (alert) dialog.append(make("p", "dialog-alert", alert));
+        if (code !== undefined) {
+          if (codeRevealLabel) {
+            const inbox = make("details", "mock-mail");
+            inbox.append(make("summary", "", codeRevealLabel), make("p", "", tr("dialog.mockMailNote")), make("label", "", codeLabel || tr("dialog.codeLabel")), make("output", "code", code));
+            dialog.append(inbox);
+          } else {
+            dialog.append(make("label", "", codeLabel || tr("dialog.codeLabel")), make("output", "code", code));
+          }
+        }
+        const label = make("label", "", inputLabel); label.htmlFor = "dialog-input";
+        const input = make("input"); input.id = "dialog-input"; input.type = inputType; input.required = true; input.autocomplete = "off";
+        dialog.append(label, input);
+        const buttons = make("div", "dialog-buttons");
+        const cancel = make("button", "button", tr("common.cancel")); cancel.type = "button";
+        const confirm = make("button", "button primary", confirmLabel); confirm.type = "submit";
+        buttons.append(cancel, confirm); dialog.append(buttons); backdrop.append(dialog); root.append(backdrop);
+        const finish = value => { document.removeEventListener("keydown", escape); root.replaceChildren(); resolve(value); };
+        cancel.addEventListener("click", () => finish(null));
+        backdrop.addEventListener("click", event => { if (event.target === backdrop) finish(null); });
+        dialog.addEventListener("submit", event => { event.preventDefault(); finish(input.value); });
+        const escape = event => { if (event.key === "Escape") finish(null); };
+        document.addEventListener("keydown", escape);
+        input.focus();
+      });
+    }
+    async function pairDevice(device) {
+      const started = await request("/api/pair/start", "POST", { deviceId: device.id });
+      const description = device.id === "front_door"
+        ? tr("pair.description.front_door", { at: formatTime(started.expiresAt) })
+        : device.id === "air_conditioner"
+          ? tr("pair.description.air_conditioner", { at: formatTime(started.expiresAt) })
+          : tr("pair.description.generic", { at: formatTime(started.expiresAt) });
+      const entered = await openDialog({ title: tr("pair.title", { name: nameFor(device.id) }), description, code: started.code, codeLabel: tr("pair.codeLabel"), inputLabel: tr("pair.inputLabel"), confirmLabel: tr("pair.confirm") });
+      if (entered === null) return;
+      await request("/api/pair/confirm", "POST", { deviceId: device.id, code: entered.trim() });
+      await refresh(); showNotice(tr("notice.paired", { name: nameFor(device.id) }), false);
+    }
+    async function askParameter(action) {
+      const config = PARAMS[action];
+      if (!config) return {};
+      const entered = await openDialog({ title: actionFor("", action), description: tr("param.dialogDescription"), inputLabel: tr(config.labelKey), inputType: config.type, confirmLabel: tr("common.continue") });
+      if (entered === null) return null;
+      const value = config.type === "number" ? Number(entered) : entered;
+      if (config.type === "number" && (!Number.isInteger(value) || value < config.min || value > config.max)) throw new Error(tr("param.range", { label: tr(config.labelKey), min: config.min, max: config.max }));
+      if (config.type === "time" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error(tr("param.timeInvalid"));
+      return { [config.key]: value };
+    }
+    async function performAction(device, action) {
+      const parameters = await askParameter(action);
+      if (parameters === null) return;
+      let confirmationId;
+      let confirmationPhrase;
+      if (device.id === "front_door" && action === "unlock") {
+        const started = await request("/api/confirm/start", "POST", { deviceId: device.id, action });
+        const entered = await openDialog({ title: tr("unlock.title"), description: tr("unlock.description", { at: formatTime(started.expiresAt) }), alert: tr("unlock.alert"), code: started.phrase, codeLabel: tr("unlock.codeLabel"), codeRevealLabel: tr("unlock.reveal"), inputLabel: tr("unlock.inputLabel"), confirmLabel: tr("unlock.confirm") });
+        if (entered === null) return;
+        confirmationId = started.confirmationId;
+        confirmationPhrase = entered.trim();
+        const result = await callSimulatedDeviceTool("device_front_door", { action, parameters, confirmationId, confirmationPhrase });
+        if (result.deviceId !== "front_door" || result.action !== "unlock"
+          || result.status !== "simulated_applied" || result.state?.locked !== false) {
+          throw new Error(tr("unlock.noResult"));
+        }
+        await refresh(); showNotice(tr("notice.unlocked"), false);
+        return;
+      }
+      const result = await request("/api/action", "POST", { deviceId: device.id, action, parameters, confirmationId, confirmationPhrase });
+      await refresh();
+      if (result.simulated !== true) throw new Error(tr("notice.notSimulated"));
+      if (result.status === "simulated_applied") {
+        showNotice(tr("notice.actionApplied", { name: nameFor(device.id), action: actionFor(device.id, action) }), false);
+      } else if (result.status === "queued") {
+        showNotice(tr("notice.actionQueued", { name: nameFor(device.id), action: actionFor(device.id, action) }), false);
+      } else {
+        showNotice(tr("notice.actionOther", { name: nameFor(device.id), status: edgeStatusLabel(result.status) }), result.status !== "expired");
+      }
+    }
+    async function run(operation) {
+      if (busy) return;
+      clearNotice(); setBusy(true);
+      try { await operation(); }
+      catch (error) { showNotice(error.message || tr("notice.operationFailed"), true); }
+      finally { setBusy(false); }
+    }
+    el("login-form").addEventListener("submit", event => {
+      event.preventDefault();
+      run(async () => {
+        const passcode = el("passcode").value;
+        const response = await request("/api/login", "POST", { passcode });
+        token = response.token;
+        el("passcode").value = "";
+        await refresh();
+        el("login-view").hidden = true;
+        el("dashboard").hidden = false;
+        el("logout").hidden = false;
+        globalThis.dispatchEvent(new Event('wifi-permission-session-refresh'));
+        showNotice(tr("notice.loggedIn"), false);
+      });
+    });
+    el("logout").addEventListener("click", () => run(async () => {
+      await request("/api/logout", "POST", {});
+      logout();
+    }));
+    el("mcp-endpoint").textContent = location.origin + "/mcp";
+    el("copy-token").addEventListener("click", () => run(async () => {
+      if (!token) throw new Error(tr("notice.loginFirst"));
+      if (!navigator.clipboard?.writeText) throw new Error(tr("notice.clipboardUnsupported"));
+      await navigator.clipboard.writeText(token);
+      showNotice(tr("notice.tokenCopied"), false);
+    }));
+    el("refresh").addEventListener("click", () => run(async () => { await refresh(); showNotice(tr("notice.refreshed"), false); }));
+    el("ring-operator-passcode").addEventListener("input", rememberRingOperatorInput);
+    renderRingOperatorDiagnostic();
+    globalThis.addEventListener?.("home-mcp-i18n-ready", () => { renderRingOperatorDiagnostic(); if (state) { render(); renderLocalRing(); } });
+    el("ring-import").addEventListener("click", () => run(importRingToken));
+    el("ring-discover").addEventListener("click", () => run(discoverRing));
+    el("ring-capture").addEventListener("click", () => run(captureRingReceipt));
+    for (const operation of ["link", "motion", "worker", "remove"]) {
+      el(`local-ring-${operation}`).addEventListener("click", () => run(() => localRingOperation(operation)));
+    }
+    el("local-ring-offline").addEventListener("click", () => run(() => localRingOperation("online", { online: false })));
+    el("local-ring-online").addEventListener("click", () => run(() => localRingOperation("online", { online: true })));
+    el("ring-history").addEventListener("click", () => run(probeRingHistory));
+    el("edge-disconnect").addEventListener("click", () => run(async () => {
+      await request("/api/edge/online", "POST", { online: false });
+      await refresh(); showNotice(tr("notice.edgeDisconnected"), false);
+    }));
+    el("edge-reconnect").addEventListener("click", () => run(async () => {
+      await request("/api/edge/online", "POST", { online: true });
+      await refresh(); showNotice(tr("notice.edgeReconnected"), false);
+    }));
+    el("edge-heartbeat-button").addEventListener("click", () => run(async () => {
+      await request("/api/edge/heartbeat", "POST", {});
+      await refresh(); showNotice(tr("notice.heartbeatSent"), false);
+    }));
+    el("edge-scene").addEventListener("click", () => run(async () => {
+      lastBatchResults = null;
+      renderEdge();
+      const result = await callSimulatedDeviceTool("device_batch", { commands: HOME_ARRIVAL_COMMANDS });
+      if (!Array.isArray(result.results) || result.results.length !== HOME_ARRIVAL_COMMANDS.length
+        || !result.results.every((item, index) => item?.deviceId === HOME_ARRIVAL_COMMANDS[index].deviceId
+          && item?.action === HOME_ARRIVAL_COMMANDS[index].action)) {
+        throw new Error(tr("notice.sceneUnverified"));
+      }
+      lastBatchResults = result.results;
+      await refresh();
+      const applied = result.results.filter(item => item.status === "simulated_applied").length;
+      const queued = result.results.filter(item => item.status === "queued").length;
+      showNotice(tr("notice.sceneResult", { total: result.results.length, applied, queued, other: result.results.length - applied - queued }), false);
+    }));
+    el("schedule-device").addEventListener("change", renderScheduleActions);
+    el("schedule-action").addEventListener("change", renderParameterField);
+    el("schedule-form").addEventListener("submit", event => {
+      event.preventDefault();
+      run(async () => {
+        const deviceId = el("schedule-device").value;
+        const action = el("schedule-action").value;
+        if (!(SAFE_SCHEDULE[deviceId] || []).includes(action)) throw new Error(tr("schedule.notAllowed"));
+        const config = PARAMS[action];
+        const parameters = {};
+        if (config) {
+          const raw = el("schedule-param").value;
+          const value = config.type === "number" ? Number(raw) : raw;
+          if (config.type === "number" && (!Number.isInteger(value) || value < config.min || value > config.max)) throw new Error(tr("schedule.paramOutOfRange", { label: tr(config.labelKey) }));
+          if (config.type === "time" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error(tr("schedule.alarmInvalid"));
+          parameters[config.key] = value;
+        }
+        const rawAt = el("schedule-at").value.trim();
+        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(rawAt)) throw new Error(tr("schedule.atFormat"));
+        const selectedTime = new Date(rawAt.replace(" ", "T"));
+        if (Number.isNaN(selectedTime.getTime()) || selectedTime.getTime() <= Date.now()) throw new Error(tr("schedule.mustBeFuture"));
+        await request("/api/schedules", "POST", { deviceId, action, parameters, at: selectedTime.toISOString() });
+        el("schedule-form").reset();
+        await refresh(); showNotice(tr("notice.scheduleAdded"), false);
+      });
+    });
+  </script>
+  <script type="module" src="/assets/i18n-map.mjs"></script>
+  <script type="module" src="/assets/wifi-permission-app.mjs"></script>
+  <script type="module" src="/assets/cloud-mcp-panel.mjs"></script>
+</body>
+</html>

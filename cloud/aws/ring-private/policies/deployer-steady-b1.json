@@ -1,0 +1,236 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyWrongRegion",
+      "Effect": "Deny",
+      "Action": [
+        "cloudformation:*",
+        "lambda:*",
+        "dynamodb:*",
+        "kms:*",
+        "secretsmanager:*",
+        "logs:*"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "aws:RequestedRegion": "ap-southeast-1"
+        }
+      }
+    },
+    {
+      "Sid": "DenyProtectedResourceTags",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "aws:ResourceTag/Project": [
+            "other-stack-a",
+            "other-stack-b",
+            "other-stack-c"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyProtectedRequestTags",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "aws:RequestTag/Project": [
+            "other-stack-a",
+            "other-stack-b",
+            "other-stack-c"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyProtectedStacks",
+      "Effect": "Deny",
+      "Action": "cloudformation:*",
+      "Resource": [
+        "arn:aws:cloudformation:*:*:stack/other-stack-a*/*",
+        "arn:aws:cloudformation:*:*:stack/other-stack-b*/*",
+        "arn:aws:cloudformation:*:*:stack/other-stack-c*/*"
+      ]
+    },
+    {
+      "Sid": "CallerIdentity",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ApplicationChangeSetCreate",
+      "Effect": "Allow",
+      "Action": "cloudformation:CreateChangeSet",
+      "Resource": [
+        "arn:aws:cloudformation:ap-southeast-1:*:stack/ring-home-mcp-private/*",
+        "arn:aws:cloudformation:ap-southeast-1:*:changeSet/ring-home-mcp-private-*/*"
+      ],
+      "Condition": {
+        "ArnLike": {
+          "cloudformation:RoleArn": "arn:aws:iam::*:role/ring-home-mcp-private/ring-home-mcp-private-cfn-exec"
+        }
+      }
+    },
+    {
+      "Sid": "ApplicationStackLifecycle",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:ListStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:GetTemplateSummary",
+        "cloudformation:DetectStackDrift",
+        "cloudformation:DescribeStackDriftDetectionStatus",
+        "cloudformation:DescribeStackResourceDrifts",
+        "cloudformation:ContinueUpdateRollback",
+        "cloudformation:CancelUpdateStack"
+      ],
+      "Resource": [
+        "arn:aws:cloudformation:ap-southeast-1:*:stack/ring-home-mcp-private/*",
+        "arn:aws:cloudformation:ap-southeast-1:*:changeSet/ring-home-mcp-private-*/*"
+      ]
+    },
+    {
+      "Sid": "BootstrapStackReadback",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:ListStackResources",
+        "cloudformation:GetTemplate"
+      ],
+      "Resource": "arn:aws:cloudformation:ap-southeast-1:*:stack/ring-home-mcp-private-bootstrap/*"
+    },
+    {
+      "Sid": "PassOnlyRingCloudFormationRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::*:role/ring-home-mcp-private/ring-home-mcp-private-cfn-exec",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "cloudformation.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ArtifactBucketLocation",
+      "Effect": "Allow",
+      "Action": "s3:GetBucketLocation",
+      "Resource": "arn:aws:s3:::ring-home-mcp-private-artifacts-*-ap-southeast-1"
+    },
+    {
+      "Sid": "ArtifactBucketList",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::ring-home-mcp-private-artifacts-*-ap-southeast-1",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "sam/ring-home-mcp-private",
+            "sam/ring-home-mcp-private/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ArtifactObjectLifecycle",
+      "Effect": "Allow",
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::ring-home-mcp-private-artifacts-*-ap-southeast-1/sam/ring-home-mcp-private/*"
+    },
+    {
+      "Sid": "TelegramSecretVersionWrite",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:PutSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:ap-southeast-1:*:secret:ring-home-mcp-private/telegram-*"
+    },
+    {
+      "Sid": "LambdaMetadataReadback",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetRuntimeManagementConfig",
+        "lambda:ListTags"
+      ],
+      "Resource": "arn:aws:lambda:ap-southeast-1:*:function:ring-home-mcp-private"
+    },
+    {
+      "Sid": "DynamoMetadataReadback",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:DescribeContinuousBackups",
+        "dynamodb:DescribeTable",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:ListTagsOfResource"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:ap-southeast-1:*:table/ring-home-mcp-private-link",
+        "arn:aws:dynamodb:ap-southeast-1:*:table/ring-home-mcp-private-witness"
+      ]
+    },
+    {
+      "Sid": "KmsMetadataReadback",
+      "Effect": "Allow",
+      "Action": [
+        "kms:DescribeKey",
+        "kms:GetKeyRotationStatus",
+        "kms:ListResourceTags"
+      ],
+      "Resource": "arn:aws:kms:ap-southeast-1:*:key/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "ring-home-mcp-hub",
+          "aws:ResourceTag/Boundary": "RingOnly",
+          "aws:ResourceTag/WorkOrder": "20260929_ring_private_linking",
+          "aws:ResourceTag/ManagedBy": "CloudFormation"
+        }
+      }
+    },
+    {
+      "Sid": "SecretMetadataReadback",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:ap-southeast-1:*:secret:ring-home-mcp-private/provider-*",
+        "arn:aws:secretsmanager:ap-southeast-1:*:secret:ring-home-mcp-private/digest-*",
+        "arn:aws:secretsmanager:ap-southeast-1:*:secret:ring-home-mcp-private/telegram-*"
+      ]
+    },
+    {
+      "Sid": "LogMetadataReadback",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogStreams",
+        "logs:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:logs:ap-southeast-1:*:log-group:/aws/lambda/ring-home-mcp-private:*"
+    }
+  ]
+}

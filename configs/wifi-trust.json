@@ -1,0 +1,7 @@
+{
+  "schema": "ring-b02-wifi-trust-config-v1",
+  "enabled": false,
+  "platform": "darwin",
+  "interface": "en0",
+  "stateRoot": "var/private/wifi-trust"
+}

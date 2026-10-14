@@ -1,0 +1,950 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Isolated Ring One-Way B01 admission candidate. Public ingress is disabled by default.
+
+Parameters:
+  LambdaRuntimeRoleArn:
+    Type: String
+    Description: ARN of the separately admitted bounded Ring-only runtime role.
+    AllowedPattern: '^arn:aws:iam::[0-9]{12}:role/ring-home-mcp-private/ring-home-mcp-private-lambda-runtime$'
+    NoEcho: true
+  PublicIngressState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [DISABLED, ENABLED]
+  B02SessionLayerArn:
+    Type: String
+    Default: UNCONFIGURED
+    Description: Fixed B02 session-seam Lambda layer admitted by a separate identity/custody gate.
+    AllowedPattern: '^(UNCONFIGURED|arn:[a-z0-9-]+:lambda:[a-z0-9-]+:[0-9]{12}:layer:ring-home-mcp-b02-session:[1-9][0-9]*)$'
+  SecretAdmissionState:
+    Type: String
+    Default: BLOCKED
+    AllowedValues: [BLOCKED, ADMITTED]
+  ProviderSecretVersionId:
+    Type: String
+    Default: UNCONFIGURED
+    Description: Immutable admitted VersionId for the Ring provider secret.
+    AllowedPattern: '^(UNCONFIGURED|[A-Za-z0-9_-]{32,64})$'
+  DigestSecretVersionId:
+    Type: String
+    Default: UNCONFIGURED
+    Description: Immutable admitted VersionId for the Ring digest secret.
+    AllowedPattern: '^(UNCONFIGURED|[A-Za-z0-9_-]{32,64})$'
+  CognitoCompositionState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [DISABLED, ADMITTED]
+  CognitoPkceResourceCompatibility:
+    Type: String
+    Default: BLOCKED
+    AllowedValues: [BLOCKED, VERIFIED]
+  FormalMcpAdmissionState:
+    Type: String
+    Default: BLOCKED
+    AllowedValues: [BLOCKED, ADMITTED]
+  McpAdmissionSha256:
+    Type: String
+    Default: UNCONFIGURED
+    Description: SHA256 of the exact root-admitted gateway and OAuth layer admission bytes.
+    AllowedPattern: '^(UNCONFIGURED|[a-f0-9]{64})$'
+  McpResourceUri:
+    Type: String
+    Default: UNCONFIGURED
+    AllowedPattern: '^(UNCONFIGURED|https://[^\s?#]{1,100}/mcp)$'
+  McpCallbackUri:
+    Type: String
+    Default: UNCONFIGURED
+    AllowedPattern: '^(UNCONFIGURED|https://[^\s#]{1,1024})$'
+  McpLogoutUri:
+    Type: String
+    Default: UNCONFIGURED
+    AllowedPattern: '^(UNCONFIGURED|https://[^\s#]{1,1024})$'
+  McpCognitoDomainPrefix:
+    Type: String
+    Default: UNCONFIGURED
+    AllowedPattern: '^(UNCONFIGURED|ring-home-mcp-[a-z0-9-]{3,40})$'
+  StageName:
+    Type: String
+    Default: staging
+    AllowedPattern: '^[A-Za-z0-9_-]{1,32}$'
+  OwnerBootstrapState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [DISABLED, ENABLED]
+    Description: One-shot first-owner bootstrap inside the real /auth/callback. Permanent no-op once OWNER#CURRENT exists.
+  OwnerBootstrapApprovalSha256:
+    Type: String
+    Default: UNCONFIGURED
+    Description: SHA256 of the exact owner-bootstrap-approval-v1.json bytes in the Lambda layer.
+    AllowedPattern: '^(UNCONFIGURED|[a-f0-9]{64})$'
+  MacEnrollmentState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [DISABLED, ENABLED]
+    Description: Bearer-verified POST /mac/enroll that installs the pinned Mac enrollment approval.
+  MacEnrollmentApprovalSha256:
+    Type: String
+    Default: UNCONFIGURED
+    Description: SHA256 of the exact mac-enrollment-approval-v1.json bytes in the Lambda layer.
+    AllowedPattern: '^(UNCONFIGURED|[a-f0-9]{64})$'
+
+Rules:
+  OwnerBootstrapRequiresBrowserSession:
+    RuleCondition: !Equals [!Ref OwnerBootstrapState, ENABLED]
+    Assertions:
+      - Assert: !And
+          - !Not [!Equals [!Ref OwnerBootstrapApprovalSha256, UNCONFIGURED]]
+          - !Equals [!Ref PublicIngressState, ENABLED]
+          - !Equals [!Ref SecretAdmissionState, ADMITTED]
+          - !Equals [!Ref CognitoCompositionState, ADMITTED]
+          - !Not [!Equals [!Ref B02SessionLayerArn, UNCONFIGURED]]
+          - !Not [!Equals [!Ref ProviderSecretVersionId, UNCONFIGURED]]
+        AssertDescription: OwnerBootstrapState ENABLED requires the browser session to be enabled and a pinned approval hash (part 1).
+      - Assert: !And
+          - !Not [!Equals [!Ref DigestSecretVersionId, UNCONFIGURED]]
+          - !Not [!Equals [!Ref McpResourceUri, UNCONFIGURED]]
+          - !Not [!Equals [!Ref McpCallbackUri, UNCONFIGURED]]
+          - !Not [!Equals [!Ref McpLogoutUri, UNCONFIGURED]]
+          - !Not [!Equals [!Ref McpCognitoDomainPrefix, UNCONFIGURED]]
+        AssertDescription: OwnerBootstrapState ENABLED requires the browser session to be enabled and a pinned approval hash (part 2).
+      - Assert: !And
+          - !Equals [!Ref CognitoPkceResourceCompatibility, VERIFIED]
+          - !Equals [!Ref FormalMcpAdmissionState, ADMITTED]
+          - !Not [!Equals [!Ref McpAdmissionSha256, UNCONFIGURED]]
+        AssertDescription: OwnerBootstrapState ENABLED requires the FORMAL MCP route prerequisites (POST /owner/bootstrap uses the MCP bearer policy).
+  MacEnrollmentRequiresMcpAndBrowserSession:
+    RuleCondition: !Equals [!Ref MacEnrollmentState, ENABLED]
+    Assertions:
+      - Assert: !And
+          - !Not [!Equals [!Ref MacEnrollmentApprovalSha256, UNCONFIGURED]]
+          - !Equals [!Ref PublicIngressState, ENABLED]
+          - !Equals [!Ref SecretAdmissionState, ADMITTED]
+          - !Equals [!Ref CognitoCompositionState, ADMITTED]
+          - !Not [!Equals [!Ref B02SessionLayerArn, UNCONFIGURED]]
+        AssertDescription: MacEnrollmentState ENABLED requires the browser session and FORMAL MCP to be enabled and a pinned approval hash (part 1).
+      - Assert: !And
+          - !Not [!Equals [!Ref ProviderSecretVersionId, UNCONFIGURED]]
+          - !Not [!Equals [!Ref DigestSecretVersionId, UNCONFIGURED]]
+          - !Not [!Equals [!Ref McpResourceUri, UNCONFIGURED]]
+          - !Not [!Equals [!Ref McpCallbackUri, UNCONFIGURED]]
+          - !Not [!Equals [!Ref McpLogoutUri, UNCONFIGURED]]
+        AssertDescription: MacEnrollmentState ENABLED requires the browser session and FORMAL MCP to be enabled and a pinned approval hash (part 2).
+      - Assert: !And
+          - !Not [!Equals [!Ref McpCognitoDomainPrefix, UNCONFIGURED]]
+          - !Equals [!Ref CognitoPkceResourceCompatibility, VERIFIED]
+          - !Equals [!Ref FormalMcpAdmissionState, ADMITTED]
+          - !Not [!Equals [!Ref McpAdmissionSha256, UNCONFIGURED]]
+        AssertDescription: MacEnrollmentState ENABLED requires the browser session and FORMAL MCP to be enabled and a pinned approval hash.
+
+Conditions:
+  B02SessionLayerConfigured: !Not [!Equals [!Ref B02SessionLayerArn, UNCONFIGURED]]
+  ProviderSecretVersionPinned: !Not [!Equals [!Ref ProviderSecretVersionId, UNCONFIGURED]]
+  DigestSecretVersionPinned: !Not [!Equals [!Ref DigestSecretVersionId, UNCONFIGURED]]
+  PublicIngressEnabled: !And
+    - !Equals [!Ref PublicIngressState, ENABLED]
+    - !Condition B02SessionLayerConfigured
+    - !Equals [!Ref SecretAdmissionState, ADMITTED]
+    - !Condition ProviderSecretVersionPinned
+    - !Condition DigestSecretVersionPinned
+  ManagedCognitoConfigured: !And
+    - !Condition PublicIngressEnabled
+    - !Equals [!Ref CognitoCompositionState, ADMITTED]
+    - !Not [!Equals [!Ref McpResourceUri, UNCONFIGURED]]
+    - !Not [!Equals [!Ref McpCallbackUri, UNCONFIGURED]]
+    - !Not [!Equals [!Ref McpLogoutUri, UNCONFIGURED]]
+    - !Not [!Equals [!Ref McpCognitoDomainPrefix, UNCONFIGURED]]
+  McpAdmissionPinned: !Not [!Equals [!Ref McpAdmissionSha256, UNCONFIGURED]]
+  FormalMcpEnabled: !And
+    - !Condition ManagedCognitoConfigured
+    - !Equals [!Ref CognitoPkceResourceCompatibility, VERIFIED]
+    - !Equals [!Ref FormalMcpAdmissionState, ADMITTED]
+    - !Condition McpAdmissionPinned
+  OwnerBootstrapEnabled: !And
+    - !Equals [!Ref OwnerBootstrapState, ENABLED]
+    - !Condition FormalMcpEnabled
+    - !Not [!Equals [!Ref OwnerBootstrapApprovalSha256, UNCONFIGURED]]
+  MacEnrollmentEnabled: !And
+    - !Equals [!Ref MacEnrollmentState, ENABLED]
+    - !Condition FormalMcpEnabled
+    - !Not [!Equals [!Ref MacEnrollmentApprovalSha256, UNCONFIGURED]]
+  # Kept only because it already exists in the live stack (p13b); no resource uses it. Route resources are gated on
+  # PublicIngressEnabled so the deployments' DependsOn never point at a condition-excluded resource (round 3 F1);
+  # availability is decided by RING_OWNER_BOOTSTRAP_STATE / RING_MAC_ENROLLMENT_STATE (handler.mjs 503 before any runtime).
+  MacEnrollRouteEnabled: !And
+    - !Condition PublicIngressEnabled
+    - !Condition MacEnrollmentEnabled
+
+Resources:
+  RingPrivateTokenKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Envelope key for Ring private linking custody.
+      Enabled: true
+      EnableKeyRotation: true
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyUsage: ENCRYPT_DECRYPT
+      Tags:
+        - {Key: Project, Value: ring-home-mcp-hub}
+        - {Key: Boundary, Value: RingOnly}
+        - {Key: WorkOrder, Value: 20260929_ring_private_linking}
+        - {Key: ManagedBy, Value: CloudFormation}
+
+  RingPrivateLinkTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ring-home-mcp-private-link
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: PK, AttributeType: S}
+        - {AttributeName: SK, AttributeType: S}
+        - {AttributeName: GSI1PK, AttributeType: S}
+        - {AttributeName: GSI1SK, AttributeType: S}
+      KeySchema:
+        - {AttributeName: PK, KeyType: HASH}
+        - {AttributeName: SK, KeyType: RANGE}
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - {AttributeName: GSI1PK, KeyType: HASH}
+            - {AttributeName: GSI1SK, KeyType: RANGE}
+          Projection: {ProjectionType: ALL}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt RingPrivateTokenKey.Arn
+
+  RingPrivateEventTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ring-home-mcp-private-event
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt RingPrivateTokenKey.Arn
+      Tags:
+        - {Key: Project, Value: ring-home-mcp-hub}
+        - {Key: Boundary, Value: RingOnly}
+        - {Key: WorkOrder, Value: 20260929_ring_private_linking}
+        - {Key: ManagedBy, Value: CloudFormation}
+
+  RingPrivateWitnessTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ring-home-mcp-private-witness
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      AttributeDefinitions:
+        - {AttributeName: witness_id, AttributeType: S}
+      KeySchema:
+        - {AttributeName: witness_id, KeyType: HASH}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt RingPrivateTokenKey.Arn
+      Tags:
+        - {Key: Project, Value: ring-home-mcp-hub}
+        - {Key: Boundary, Value: RingOnly}
+        - {Key: Purpose, Value: AntiRollbackWitness}
+        - {Key: WorkOrder, Value: 20260929_ring_private_linking}
+        - {Key: ManagedBy, Value: CloudFormation}
+
+  RingPrivateProviderSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: ring-home-mcp-private/provider
+      Description: Empty Ring provider-secret container; values are admitted separately.
+      KmsKeyId: !GetAtt RingPrivateTokenKey.Arn
+
+  RingPrivateDigestSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: ring-home-mcp-private/digest
+      Description: Empty Ring HMAC-secret container; values are admitted separately.
+      KmsKeyId: !GetAtt RingPrivateTokenKey.Arn
+
+  RingPrivateLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/ring-home-mcp-private
+      RetentionInDays: 14
+
+  RingPrivateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ring-home-mcp-private
+      CodeUri: ../../../artifacts/ring-private
+      Handler: cloud/aws/ring-private/handler.handler
+      Runtime: nodejs24.x
+      Role: !Ref LambdaRuntimeRoleArn
+      Architectures: [arm64]
+      Layers: !If
+        - B02SessionLayerConfigured
+        - [!Ref B02SessionLayerArn]
+        - !Ref AWS::NoValue
+      MemorySize: 256
+      Timeout: 10
+      Tracing: Disabled
+      LoggingConfig:
+        LogFormat: JSON
+        LogGroup: !Ref RingPrivateLogGroup
+      Environment:
+        Variables:
+          RING_BACKEND_STATE: !If [PublicIngressEnabled, enabled, blocked]
+          RING_MCP_STATE: !If [FormalMcpEnabled, enabled, blocked]
+          RING_BROWSER_SESSION_STATE: !If [ManagedCognitoConfigured, enabled, blocked]
+          RING_OWNER_BOOTSTRAP_STATE: !If [OwnerBootstrapEnabled, enabled, blocked]
+          RING_OWNER_BOOTSTRAP_APPROVAL_SHA256: !Ref OwnerBootstrapApprovalSha256
+          RING_MAC_ENROLLMENT_STATE: !If [MacEnrollmentEnabled, enabled, blocked]
+          RING_MAC_ENROLLMENT_APPROVAL_SHA256: !Ref MacEnrollmentApprovalSha256
+          RING_BROWSER_COGNITO_DOMAIN: !If [ManagedCognitoConfigured, !Sub 'https://${McpCognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com', UNCONFIGURED]
+          RING_BROWSER_CALLBACK_URI: !Ref McpCallbackUri
+          RING_BROWSER_LOGOUT_URI: !Ref McpLogoutUri
+          RING_MCP_ISSUER: !If [ManagedCognitoConfigured, !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${RingMcpUserPool}', UNCONFIGURED]
+          RING_MCP_PUBLIC_CLIENT_ID: !If [ManagedCognitoConfigured, !Ref RingMcpPublicClient, UNCONFIGURED]
+          RING_MCP_ADMISSION_SHA256: !Ref McpAdmissionSha256
+          RING_MCP_FUNCTION_ARN: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:ring-home-mcp-private
+          RING_APPLICATION: ring-home-mcp-private
+          RING_MCP_RESOURCE_URI: !Ref McpResourceUri
+          RING_MCP_REQUIRED_SCOPES: !Sub '["${McpResourceUri}/tools.list","${McpResourceUri}/tools.call"]'
+          RING_MCP_MAX_TOKEN_LIFETIME_SECONDS: '300'
+          RING_MCP_MAX_JWKS_AGE_SECONDS: '300'
+          RING_MCP_EXPECTED_API_ID: !If [PublicIngressEnabled, !Ref RingPrivateApi, UNCONFIGURED]
+          RING_MCP_EXPECTED_STAGE: !Ref StageName
+          RING_LINK_TABLE_NAME: !Ref RingPrivateLinkTable
+          RING_EVENT_TABLE_NAME: !Ref RingPrivateEventTable
+          RING_WITNESS_TABLE_NAME: !Ref RingPrivateWitnessTable
+          RING_WITNESS_ID: formal-runtime-primary-v1
+          RING_WITNESS_MODE: REQUIRE_EXISTING
+          RING_LINK_INDEX_NAME: GSI1
+          RING_TOKEN_KMS_KEY_ID: !GetAtt RingPrivateTokenKey.Arn
+          RING_PROVIDER_SECRET_ARN: !Ref RingPrivateProviderSecret
+          RING_PROVIDER_SECRET_VERSION_ID: !Ref ProviderSecretVersionId
+          RING_DIGEST_SECRET_ARN: !Ref RingPrivateDigestSecret
+          RING_DIGEST_SECRET_VERSION_ID: !Ref DigestSecretVersionId
+      Tags:
+        Project: ring-home-mcp-hub
+        Boundary: RingOnly
+        WorkOrder: 20260929_ring_private_linking
+
+  RingMcpUserPool:
+    Type: AWS::Cognito::UserPool
+    Condition: ManagedCognitoConfigured
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: ring-home-mcp-private
+      AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
+      MfaConfiguration: 'ON'
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      DeletionProtection: ACTIVE
+      UserPoolTags: {Project: ring-home-mcp-hub, Boundary: RingOnly}
+
+  RingMcpResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Condition: ManagedCognitoConfigured
+    Properties:
+      UserPoolId: !Ref RingMcpUserPool
+      Identifier: !Ref McpResourceUri
+      Name: Ring MCP capabilities
+      Scopes:
+        - {ScopeName: tools.list, ScopeDescription: List admitted MCP capabilities}
+        - {ScopeName: tools.call, ScopeDescription: Call admitted MCP capabilities}
+
+  RingMcpPublicClient:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: ManagedCognitoConfigured
+    DependsOn: RingMcpResourceServer
+    Properties:
+      UserPoolId: !Ref RingMcpUserPool
+      ClientName: ring-home-mcp-public-pkce
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      SupportedIdentityProviders: [COGNITO]
+      AllowedOAuthScopes:
+        - !Sub ${McpResourceUri}/tools.list
+        - !Sub ${McpResourceUri}/tools.call
+      CallbackURLs: [!Ref McpCallbackUri]
+      LogoutURLs: [!Ref McpLogoutUri]
+      AccessTokenValidity: 5
+      TokenValidityUnits: {AccessToken: minutes}
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+
+  RingMcpUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Condition: ManagedCognitoConfigured
+    Properties:
+      UserPoolId: !Ref RingMcpUserPool
+      Domain: !Ref McpCognitoDomainPrefix
+      ManagedLoginVersion: 2
+
+  RingMcpManagedLoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    Condition: ManagedCognitoConfigured
+    DependsOn: RingMcpUserPoolDomain
+    Properties:
+      UserPoolId: !Ref RingMcpUserPool
+      ClientId: !Ref RingMcpPublicClient
+      UseCognitoProvidedValues: true
+
+  RingPrivateApi:
+    Type: AWS::ApiGateway::RestApi
+    Condition: PublicIngressEnabled
+    Properties:
+      Name: ring-home-mcp-private
+      EndpointConfiguration: {Types: [REGIONAL]}
+      BinaryMediaTypes:
+        - application/json
+        - application/x-www-form-urlencoded
+      DisableExecuteApiEndpoint: false
+      SecurityPolicy: SecurityPolicy_TLS13_1_2_2021_06
+      EndpointAccessMode: STRICT
+      Tags:
+        - {Key: Project, Value: ring-home-mcp-hub}
+        - {Key: Boundary, Value: RingOnly}
+        - {Key: WorkOrder, Value: 20260929_ring_private_linking}
+        - {Key: ManagedBy, Value: CloudFormation}
+
+  RingTokenResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !GetAtt RingPrivateApi.RootResourceId
+      PathPart: ring
+
+  RingTokenExchangeResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingTokenResource
+      PathPart: token
+
+  RingAccountLinkResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingTokenResource
+      PathPart: link
+
+  RingCompletionResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingTokenResource
+      PathPart: complete
+
+  RingWebhookResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingTokenResource
+      PathPart: webhook
+
+  RingTokenExchangeMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingTokenExchangeResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingAccountLinkMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingAccountLinkResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingCompletionMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingCompletionResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingWebhookMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingWebhookResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingMcpResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !GetAtt RingPrivateApi.RootResourceId
+      PathPart: mcp
+
+  RingWellKnownResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !GetAtt RingPrivateApi.RootResourceId
+      PathPart: .well-known
+
+  RingProtectedResourceMetadataResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingWellKnownResource
+      PathPart: oauth-protected-resource
+
+  RingMcpMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingMcpResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingProtectedResourceMetadataMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingProtectedResourceMetadataResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingMacResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !GetAtt RingPrivateApi.RootResourceId
+      PathPart: mac
+
+  RingMacCommandsResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingMacResource
+      PathPart: commands
+
+  RingMacFetchResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingMacCommandsResource
+      PathPart: fetch
+
+  RingMacReceiptResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingMacCommandsResource
+      PathPart: receipt
+
+  RingMacFetchMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingMacFetchResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingMacFetchInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/mac/commands/fetch
+
+  RingMacEnrollResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingMacResource
+      PathPart: enroll
+
+  RingMacEnrollMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingMacEnrollResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingMacEnrollInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/mac/enroll
+
+  RingOwnerResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !GetAtt RingPrivateApi.RootResourceId
+      PathPart: owner
+
+  RingOwnerBootstrapResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingOwnerResource
+      PathPart: bootstrap
+
+  RingOwnerBootstrapMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingOwnerBootstrapResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingOwnerBootstrapInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/owner/bootstrap
+
+  RingMacReceiptMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingMacReceiptResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingMacReceiptInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/mac/commands/receipt
+
+  RingPrivateApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Condition: PublicIngressEnabled
+    DependsOn:
+      - RingTokenExchangeMethod
+      - RingAccountLinkMethod
+      - RingCompletionMethod
+      - RingWebhookMethod
+      - RingMcpMethod
+      - RingProtectedResourceMetadataMethod
+      - RingMacFetchMethod
+      - RingMacReceiptMethod
+      - RingMacEnrollMethod
+      - RingOwnerBootstrapMethod
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+
+  RingAuthResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !GetAtt RingPrivateApi.RootResourceId
+      PathPart: auth
+
+  RingAuthLoginResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingAuthResource
+      PathPart: login
+
+  RingAuthLoginMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingAuthLoginResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingAuthLoginInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: ManagedCognitoConfigured
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/GET/auth/login
+
+  RingAuthCallbackResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingAuthResource
+      PathPart: callback
+
+  RingAuthCallbackMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingAuthCallbackResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingAuthCallbackInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: ManagedCognitoConfigured
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/GET/auth/callback
+
+  RingAuthLogoutResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingAuthResource
+      PathPart: logout
+
+  RingAuthLogoutMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingAuthLogoutResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingAuthLogoutInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: ManagedCognitoConfigured
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/GET/auth/logout
+
+  RingAuthSessionResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingAuthResource
+      PathPart: session
+
+  RingAuthSessionMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: ManagedCognitoConfigured
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingAuthSessionResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingAuthSessionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: ManagedCognitoConfigured
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/auth/session
+
+  RingAuthApiDeploymentV2:
+    Type: AWS::ApiGateway::Deployment
+    Condition: ManagedCognitoConfigured
+    DependsOn:
+      - RingTokenExchangeMethod
+      - RingAccountLinkMethod
+      - RingCompletionMethod
+      - RingWebhookMethod
+      - RingMcpMethod
+      - RingProtectedResourceMetadataMethod
+      - RingMacFetchMethod
+      - RingMacReceiptMethod
+      - RingMacEnrollMethod
+      - RingOwnerBootstrapMethod
+      - RingAuthLoginMethod
+      - RingAuthCallbackMethod
+      - RingAuthLogoutMethod
+      - RingAuthSessionMethod
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+
+  RingPrivateApiStage:
+    Type: AWS::ApiGateway::Stage
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      DeploymentId: !If [ManagedCognitoConfigured, !Ref RingAuthApiDeploymentV2, !Ref RingPrivateApiDeployment]
+      StageName: !Ref StageName
+      TracingEnabled: false
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          DataTraceEnabled: false
+          LoggingLevel: "OFF"
+          MetricsEnabled: true
+          ThrottlingBurstLimit: 10
+          ThrottlingRateLimit: 5
+
+  RingPrivateInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/*/*/ring/*
+
+  RingMcpInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/mcp
+
+  RingMetadataInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/GET/.well-known/oauth-protected-resource
+
+Outputs:
+  PublicIngressAdmissionState:
+    Value: !If [PublicIngressEnabled, CANDIDATE_ENABLED_REQUIRES_READBACK, DISABLED]
+  AccountLinkUrl:
+    Value: !If
+      - PublicIngressEnabled
+      - !Sub https://${RingPrivateApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${StageName}/ring/link
+      - NOT_DEPLOYED
+  DefaultRedirectUrl:
+    Value: !If
+      - PublicIngressEnabled
+      - !Sub https://${RingPrivateApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${StageName}/ring/complete
+      - NOT_DEPLOYED
+  TokenExchangeUrl:
+    Value: !If
+      - PublicIngressEnabled
+      - !Sub https://${RingPrivateApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${StageName}/ring/token
+      - NOT_DEPLOYED
+  WebhookUrl:
+    Value: !If
+      - PublicIngressEnabled
+      - !Sub https://${RingPrivateApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${StageName}/ring/webhook
+      - NOT_DEPLOYED
