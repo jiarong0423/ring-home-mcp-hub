@@ -4,7 +4,7 @@
 
 Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring track**, plus the **AWS Builder** mini challenge.
 
-- Demo video (under 3 minutes): `<YOUTUBE_URL>`
+- Demo video (under 3 minutes): https://youtu.be/_DTcUaVQPgE
 - License: MIT
 
 ![Architecture](docs/architecture.png)
