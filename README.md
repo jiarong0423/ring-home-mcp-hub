@@ -83,7 +83,7 @@ The MCP server also pins its API Gateway id, stage, domain and function in an ad
 Requirements: **macOS** (clipboard import uses `/usr/bin/pbpaste`) and **Node.js ≥ 20.11**. No `npm install` is needed for the local console.
 
 ```bash
-git clone <REPO_URL>
+git clone https://github.com/jiarong0423/ring-home-mcp-hub.git
 cd ring-home-mcp-hub
 ```
 
