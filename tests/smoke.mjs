@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const projectDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const passcode = process.env.HOME_MCP_TEST_PASS || randomBytes(18).toString('base64url');
@@ -11,7 +13,9 @@ let base = process.env.HOME_MCP_TEST_URL;
 if (!base) {
   child = spawn(process.execPath, [join(projectDir, 'src/server.mjs')], {
     cwd: projectDir,
-    env: { ...process.env, HOME_MCP_PORT: '0', HOME_MCP_DEMO_PASS: passcode },
+    // Own empty phone store: never read the console's real paired phones.
+    env: { ...process.env, HOME_MCP_PORT: '0', HOME_MCP_DEMO_PASS: passcode, HOME_MCP_RING_PROBE: 'off',
+      HOME_MCP_PHONE_STORE: join(mkdtempSync(join(tmpdir(), 'smoke-phones-')), 'phones.json') },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   process.on('exit', () => child.kill());
@@ -177,29 +181,25 @@ assert.equal(connected.body.applied.length, 1);
 const nowOff = await request('/api/state', { token });
 assert.equal(nowOff.body.devices.find((device) => device.id === 'air_conditioner').state.power, false);
 
+// Door unlock is request-and-approve now (DOOR_APPROVAL_PLAN_zh.md): an agent may only ASK, and only the paired admin
+// phone approves. With no admin phone there is nobody to approve, so the request itself is refused; the one-use phrase is
+// no longer handed to a session holder; a stale-style unlock carrying confirmation fields is still only a request.
 const unlockDenied = await rpc('tools/call', {
   name: 'device_front_door', arguments: { action: 'unlock' },
 });
-assert.equal(unlockDenied.result.isError, true);
-
+assert.equal(unlockDenied.error?.code, -32003);
+assert.match(unlockDenied.error?.message ?? '', /ADMIN_PHONE_REQUIRED/u);
 const confirmation = await request('/api/confirm/start', {
   method: 'POST', token, body: { deviceId: 'front_door', action: 'unlock' },
 });
-assert.equal(confirmation.status, 200);
-const unlockArgs = {
-  action: 'unlock',
-  confirmationId: confirmation.body.confirmationId,
-  confirmationPhrase: confirmation.body.phrase,
-};
-const unlocked = await rpc('tools/call', {
-  name: 'device_front_door', arguments: unlockArgs,
+assert.equal(confirmation.status, 403);
+assert.equal(confirmation.body.error, 'DOOR_APPROVAL_REQUIRED');
+const selfConfirmed = await rpc('tools/call', {
+  name: 'device_front_door', arguments: { action: 'unlock', confirmationId: '00000000-0000-4000-8000-000000000000', confirmationPhrase: '123456' },
 });
-assert.equal(unlocked.result.isError, false);
-assert.equal(unlocked.result.structuredContent.state.locked, false);
-const replay = await rpc('tools/call', {
-  name: 'device_front_door', arguments: unlockArgs,
-});
-assert.equal(replay.result.isError, true);
+assert.equal(selfConfirmed.error?.code, -32003);
+const doorStill = await request('/api/state', { token });
+assert.equal(doorStill.body.devices.find((device) => device.id === 'front_door').state.locked, true);
 
 const unsafeSchedule = await request('/api/schedules', {
   method: 'POST', token,

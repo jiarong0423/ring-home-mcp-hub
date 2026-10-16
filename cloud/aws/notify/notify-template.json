@@ -1,0 +1,112 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Home MCP family alerts: one SNS email topic, a hub-heartbeat dead-man alarm, and a least-privilege publisher user. Independent of the main Home MCP cloud stack.",
+  "Parameters": {
+    "AlertEmail": {
+      "Type": "String",
+      "Description": "Family address that receives alerts (confirm the subscription email AWS sends).",
+      "AllowedPattern": "^[^@\\s]{1,64}@[^@\\s]{1,190}\\.[A-Za-z]{2,24}$",
+      "ConstraintDescription": "A single email address."
+    },
+    "HubSilentPeriods": {
+      "Type": "Number",
+      "Description": "Five-minute periods without a hub heartbeat before the alarm fires (3 = 15 minutes; use 1 for a demo).",
+      "Default": 3,
+      "MinValue": 1,
+      "MaxValue": 12
+    },
+    "HubName": {
+      "Type": "String",
+      "Description": "Heartbeat dimension value written by the hub.",
+      "Default": "home",
+      "AllowedPattern": "^[a-z0-9-]{1,32}$"
+    },
+    "CareSummaryModelArns": {
+      "Type": "CommaDelimitedList",
+      "Description": "Optional. Exact Bedrock model / inference-profile ARNs the hub may call for the daily care summary. Empty = no Bedrock permission.",
+      "Default": ""
+    }
+  },
+  "Conditions": {
+    "CareSummaryEnabled": { "Fn::Not": [{ "Fn::Equals": [{ "Fn::Join": ["", { "Ref": "CareSummaryModelArns" }] }, ""] }] }
+  },
+  "Resources": {
+    "AlertsTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "TopicName": "home-mcp-alerts",
+        "DisplayName": "Home MCP"
+      }
+    },
+    "AlertsEmailSubscription": {
+      "Type": "AWS::SNS::Subscription",
+      "Properties": {
+        "TopicArn": { "Ref": "AlertsTopic" },
+        "Protocol": "email",
+        "Endpoint": { "Ref": "AlertEmail" }
+      }
+    },
+    "HubSilentAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "home-mcp-hub-silent",
+        "AlarmDescription": "[Home MCP] The home hub stopped sending heartbeats. It may be powered off, offline or crashed.",
+        "Namespace": "HomeMcp",
+        "MetricName": "HubHeartbeat",
+        "Dimensions": [{ "Name": "Hub", "Value": { "Ref": "HubName" } }],
+        "Statistic": "SampleCount",
+        "Period": 300,
+        "EvaluationPeriods": { "Ref": "HubSilentPeriods" },
+        "DatapointsToAlarm": { "Ref": "HubSilentPeriods" },
+        "Threshold": 1,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "breaching",
+        "AlarmActions": [{ "Ref": "AlertsTopic" }],
+        "OKActions": [{ "Ref": "AlertsTopic" }]
+      }
+    },
+    "NotifierUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "Path": "/home-mcp/"
+      }
+    },
+    "NotifierPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "home-mcp-notifier-least-privilege",
+        "Users": [{ "Ref": "NotifierUser" }],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "PublishFamilyAlertsOnly",
+              "Effect": "Allow",
+              "Action": "sns:Publish",
+              "Resource": { "Ref": "AlertsTopic" }
+            },
+            {
+              "Sid": "WriteHubHeartbeatOnly",
+              "Effect": "Allow",
+              "Action": "cloudwatch:PutMetricData",
+              "Resource": "*",
+              "Condition": { "StringEquals": { "cloudwatch:namespace": "HomeMcp" } }
+            },
+            {
+              "Fn::If": ["CareSummaryEnabled", {
+                "Sid": "InvokeCareSummaryModelOnly",
+                "Effect": "Allow",
+                "Action": "bedrock:InvokeModel",
+                "Resource": { "Ref": "CareSummaryModelArns" }
+              }, { "Ref": "AWS::NoValue" }]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "AlertsTopicArn": { "Value": { "Ref": "AlertsTopic" }, "Description": "Set as HOME_MCP_NOTIFY_SNS_TOPIC_ARN on the hub." },
+    "NotifierUserName": { "Value": { "Ref": "NotifierUser" }, "Description": "Create an access key for this user yourself; store it only with aws configure --profile home-mcp-notify." }
+  }
+}

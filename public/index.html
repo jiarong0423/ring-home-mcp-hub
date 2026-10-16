@@ -131,6 +131,51 @@
     .mock-mail p { margin: 9px 0; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     [hidden] { display: none !important; }
+    body[data-role="member"] .admin-only { display: none; }
+    body:not([data-via="phone"]) .phone-only { display: none; }
+    .remote-phones li { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .guardian { margin-bottom: 24px; }
+    .guardian-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .guardian-overall { margin: 10px 0 14px; padding: 14px 16px; border-radius: 14px; font-size: 1.35rem; font-weight: 800; background: #143a2f; color: #bff5e2; }
+    .guardian-overall[data-state="attention"] { background: #4a2626; color: #ffd1d1; }
+    .door-banner { margin: 0 0 14px; padding: 12px 14px; border: 2px solid #f2c94c; border-radius: 14px; background: #3a3216; }
+    .door-banner p { margin: 0 0 8px; }
+    .door-banner .door-ask { font-size: 1.15rem; font-weight: 800; }
+    .door-banner img { display: block; width: 100%; max-width: 480px; border-radius: 10px; margin: 0 0 8px; }
+    .door-actions { display: flex; gap: 10px; margin: 6px 0 8px; }
+    .door-face { font-weight: 700; }
+    .door-live { display: block; width: 100%; max-width: 480px; border-radius: 10px; margin: 8px 0; background: #000; }
+    body[data-via="phone"] .hero, body[data-via="phone"] #cloud-mcp-panel { display: none; }
+    .ring-connect-fold > summary { cursor: pointer; font-size: 1.25rem; font-weight: 800; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; min-height: 44px; }
+    .pill-state { font-size: .95rem; font-weight: 700; padding: 4px 12px; border-radius: 999px; background: #3a3216; color: #f2c94c; }
+    .pill-state[data-state="ok"] { background: #143a2f; color: #bff5e2; }
+    .ring-steps { list-style: none; padding: 0; margin: 14px 0 8px; display: grid; gap: 14px; }
+    .ring-steps li { display: flex; gap: 12px; align-items: flex-start; }
+    .ring-steps li > div { display: grid; gap: 8px; flex: 1; }
+    .step-num { flex: none; width: 34px; height: 34px; border-radius: 50%; background: #5ee0b8; color: #0f1720; font-weight: 800; display: grid; place-items: center; }
+    .ring-token-label { display: grid; gap: 6px; font-size: .9rem; color: #a9b8c6; }
+    .faces-form { display: grid; gap: 10px; margin: 10px 0; }
+    .faces-form label.consent { display: flex; gap: 10px; align-items: flex-start; }
+    .faces-form label.consent input { min-height: 24px; min-width: 24px; }
+    .door-actions .button { flex: 1; }
+    .guardian-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .guardian-cards .stat span, .guardian-cards .stat small { display: block; }
+    .guardian-cards .stat small { color: var(--muted); font-size: .72rem; margin-top: 4px; }
+    .guardian-run[data-result="not_executed"], .guardian-run[data-result="unknown"], #guardian-events li[data-severity="alert"] { color: var(--danger); }
+    #guardian-events li[data-severity="warn"] { color: var(--warn); }
+    .phone-pair { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+    .phone-pair form { display: grid; gap: 12px; margin-top: 12px; }
+    #phones-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    /* Phone first: every control is at least a 44px touch target; advanced areas fold away. */
+    .button, .button.small, input, select { min-height: 44px; }
+    details.fold { margin: 0 0 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+    details.fold > summary { display: flex; align-items: center; min-height: 52px; padding: 12px 20px; cursor: pointer; font-weight: 750; }
+    details.fold[open] > summary { border-bottom: 1px solid var(--line); }
+    details.fold > .panel { margin: 16px; box-shadow: none; }
+    details.fold.inner { margin: 14px 0; border-radius: 12px; background: var(--surface-2); }
+    details.fold.inner > summary { min-height: 44px; padding: 10px 14px; font-weight: 650; font-size: .9rem; }
+    details.fold.inner > :not(summary) { margin-left: 14px; margin-right: 14px; }
+    #dashboard > section[aria-labelledby="audit-heading"] { margin-bottom: 24px; }
     @media (max-width: 780px) { .columns { grid-template-columns: 1fr; } header { align-items: flex-start; } .header-note { display: none; } }
     @media (max-width: 510px) { .shell { width: min(100% - 22px, 1280px); } .hero-stats { width: 100%; } .stat { flex: 1; } .form-grid { grid-template-columns: 1fr; } .form-grid .wide { grid-column: auto; } }
   </style>
@@ -145,6 +190,18 @@
       <div id="notice" class="notice" role="status" aria-live="polite"></div>
       <section id="login-view" class="panel login" aria-labelledby="login-heading">
         <h2 id="login-heading" data-i18n="login.heading"></h2>
+        <div class="phone-pair">
+          <h3 data-i18n="phone.pair.heading"></h3>
+          <p class="hint" data-i18n="phone.pair.intro"></p>
+          <button id="phone-unlock" class="button primary full" type="button" data-i18n="phone.unlock.button" hidden></button>
+          <form id="phone-pair-form">
+            <div class="field"><label for="phone-pair-code" data-i18n="phone.pair.code"></label><input id="phone-pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="9" required></div>
+            <div class="field"><label for="phone-pair-name" data-i18n="phone.pair.name"></label><input id="phone-pair-name" maxlength="20" autocomplete="nickname" required></div>
+            <button id="phone-pair-submit" class="button primary full" type="submit" data-i18n="phone.pair.submit"></button>
+          </form>
+          <output id="phone-pair-status" role="status" aria-live="polite"></output>
+        </div>
+        <h3 data-i18n="login.passcodeAlt"></h3>
         <p data-i18n="login.intro"></p>
         <form id="login-form">
           <div class="field"><label for="passcode" data-i18n="login.passcode.label"></label><input id="passcode" name="passcode" type="password" autocomplete="off" required><span class="hint" data-i18n="login.passcode.hint"></span></div>
@@ -156,14 +213,161 @@
           <div><h1 id="page-heading" data-i18n="hero.heading"></h1><p data-i18n="hero.intro"></p><div class="connection"><span data-i18n="hero.endpoint"></span><code id="mcp-endpoint"></code><button id="copy-token" class="button small" type="button" data-i18n="hero.copyToken"></button><span data-i18n="hero.tokenNote"></span></div></div>
           <div class="hero-stats" data-i18n-aria-label="hero.statsAria"><div class="stat"><strong id="device-count">7</strong><span data-i18n="hero.stat.devices"></span></div><div class="stat"><strong id="paired-count">0</strong><span data-i18n="hero.stat.paired"></span></div><div class="stat"><strong id="schedule-count">0</strong><span data-i18n="hero.stat.schedules"></span></div></div>
         </section>
-        <section class="panel" aria-labelledby="wifi-permission-title" data-wifi-permission-root>
-          <h2 id="wifi-permission-title" data-i18n="wifi.title"></h2>
-          <p class="section-intro" data-i18n="wifi.intro"></p>
-          <output data-wifi-permission-status data-state="idle" role="status" aria-live="polite" aria-busy="false" data-i18n="wifi.status.initial"></output>
-          <div class="edge-controls">
-            <button class="button primary" type="button" data-wifi-authorize data-i18n="wifi.authorize"></button>
-            <button class="button" type="button" data-wifi-revoke disabled data-i18n="wifi.revoke"></button>
+        <section id="ring-connect" class="panel section-panel admin-only" aria-labelledby="ring-connect-heading">
+          <details id="ring-connect-fold" class="ring-connect-fold" open>
+            <summary><span id="ring-connect-heading" data-i18n="ringConnect.heading"></span> <span id="ring-connect-state" class="pill-state" role="status" aria-live="polite"></span></summary>
+            <ol class="ring-steps">
+              <li><span class="step-num">1</span><div><b data-i18n="ringConnect.step1"></b><a id="ring-connect-open" class="button" href="https://developer.amazon.com/ring/console/playground" target="_blank" rel="noopener noreferrer" data-i18n="ringConnect.open"></a></div></li>
+              <li><span class="step-num">2</span><div><b data-i18n="ringConnect.step2"></b><button id="ring-connect-paste" class="button" type="button" data-i18n="ringConnect.pasteButton"></button>
+                <form id="ring-connect-form" autocomplete="off"><label class="ring-token-label"><span data-i18n="ringConnect.paste"></span><input id="ring-connect-token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="4096"></label></form></div></li>
+              <li><span class="step-num">3</span><div><b data-i18n="ringConnect.step3"></b><div class="door-actions"><button id="ring-connect-save" class="button primary" type="submit" form="ring-connect-form" data-i18n="ringConnect.connect"></button><button id="ring-connect-clear" class="button" type="button" data-i18n="ringConnect.disconnect"></button></div></div></li>
+            </ol>
+            <p class="hint" data-i18n="ringConnect.intro"></p>
+            <p id="ring-connect-result" class="hint" role="status" aria-live="polite"></p>
+          </details>
+        </section>
+        <section id="guardian-panel" class="panel section-panel guardian" aria-labelledby="guardian-heading">
+          <div class="guardian-head"><h2 id="guardian-heading" data-i18n="guardian.heading"></h2><span id="guardian-clock" class="hint"></span></div>
+          <p id="guardian-overall" class="guardian-overall" role="status" aria-live="polite" data-i18n="guardian.loading"></p>
+          <div id="door-banner" class="door-banner" role="alert" hidden>
+            <p id="door-banner-text" class="door-ask"></p>
+            <img id="door-snapshot" alt="" hidden>
+            <p id="door-snapshot-note" class="hint"></p>
+            <p id="door-face-hint" class="door-face"></p>
+            <div class="door-actions"><button id="door-live-toggle" class="button" type="button" data-i18n="door.liveStart"></button></div>
+            <video id="door-live" class="door-live" autoplay playsinline muted hidden></video>
+            <p id="door-live-note" class="hint" role="status" aria-live="polite"></p>
+            <div class="door-actions"><button id="door-approve" class="button primary" type="button" data-i18n="door.approve"></button><button id="door-deny" class="button danger" type="button" data-i18n="door.deny"></button></div>
+            <p class="hint" data-i18n="door.simulatedNote"></p>
           </div>
+          <p id="door-mine" class="hint" role="status" aria-live="polite"></p>
+          <div id="pair-banner" class="door-banner" role="alert" hidden>
+            <p id="pair-banner-text" class="door-ask"></p>
+            <p class="hint" data-i18n="pairReq.note"></p>
+            <div class="door-actions"><button id="pair-allow" class="button primary" type="button" data-i18n="pairReq.allow"></button><button id="pair-deny" class="button danger" type="button" data-i18n="pairReq.deny"></button></div>
+          </div>
+          <p id="pair-result" class="hint" role="status" aria-live="polite"></p>
+          <div class="guardian-cards">
+            <div class="stat"><strong id="guardian-camera">—</strong><span data-i18n="guardian.target.camera"></span><small id="guardian-camera-note"></small></div>
+            <div class="stat"><strong id="guardian-gateway">—</strong><span data-i18n="guardian.target.gateway"></span><small id="guardian-gateway-note"></small></div>
+            <div class="stat"><strong id="guardian-routine">—</strong><span data-i18n="guardian.routineLabel"></span></div>
+          </div>
+          <p id="guardian-email" class="hint"></p>
+          <h3 data-i18n="guardian.todayHeading"></h3>
+          <ul id="guardian-today" class="list"></ul>
+          <h3 data-i18n="guardian.eventsHeading"></h3>
+          <ul id="guardian-events" class="list audit"></ul>
+          <div class="ring-discovery-controls admin-only">
+            <button id="guardian-camera-off" class="button" type="button" data-i18n="guardian.simCameraOff"></button>
+            <button id="guardian-camera-on" class="button" type="button" data-i18n="guardian.simCameraOn"></button>
+            <button id="guardian-gateway-off" class="button" type="button" data-i18n="guardian.simGatewayOff"></button>
+            <button id="guardian-gateway-on" class="button" type="button" data-i18n="guardian.simGatewayOn"></button>
+            <button id="guardian-doorbell" class="button" type="button" data-i18n="guardian.simDoorbell"></button>
+          </div>
+        </section>
+        <section id="remote-approval" class="panel section-panel admin-only phone-only" aria-labelledby="remote-heading">
+          <h2><span id="remote-heading" data-i18n="remote.heading"></span> <span id="remote-state" class="pill-state" role="status" aria-live="polite"></span></h2>
+          <p class="section-intro" data-i18n="remote.intro"></p>
+          <div class="door-actions"><button id="remote-enable" class="button primary" type="button" data-i18n="remote.enable"></button></div>
+          <div id="remote-link" hidden>
+            <p id="remote-code" class="hint"></p>
+            <div class="door-actions"><a id="remote-open" class="button" target="_blank" rel="noopener noreferrer" data-i18n="remote.open"></a><button id="remote-copy" class="button" type="button" data-i18n="remote.copy"></button></div>
+          </div>
+          <ul id="remote-phones" class="list remote-phones"></ul>
+          <p id="remote-result" class="hint" role="status" aria-live="polite"></p>
+        </section>
+        <section aria-labelledby="devices-heading">
+          <div class="section-heading"><div><h2 id="devices-heading" data-i18n="devices.heading"></h2><p class="section-intro" data-i18n="devices.intro"></p></div><button id="refresh" class="button small" type="button" data-i18n="common.refreshStatus"></button></div>
+          <div id="devices" class="grid"></div>
+        </section>
+        <section class="panel section-panel" aria-labelledby="audit-heading">
+          <h2 id="audit-heading" data-i18n="audit.heading"></h2><p class="section-intro" data-i18n="audit.intro"></p><ul id="audit" class="list audit"></ul>
+        </section>
+        <section id="phones-panel" class="panel section-panel admin-only" aria-labelledby="phones-heading">
+          <h2 id="phones-heading" data-i18n="phones.heading"></h2><p class="section-intro" data-i18n="phones.intro"></p>
+          <div class="ring-discovery-controls">
+            <button id="phones-add-member" class="button primary" type="button" data-i18n="phones.addMember"></button>
+            <button id="phones-add-admin" class="button" type="button" data-i18n="phones.addAdmin"></button>
+            <button id="phones-refresh" class="button small" type="button" data-i18n="common.refreshStatus"></button>
+          </div>
+          <output id="phones-code" role="status" aria-live="polite"></output>
+          <ul id="phones-list" class="list"></ul>
+        </section>
+        <section id="faces-panel" class="panel section-panel admin-only" aria-labelledby="faces-heading" hidden>
+          <h2 id="faces-heading" data-i18n="faces.heading"></h2><p class="section-intro" data-i18n="faces.intro"></p>
+          <p id="faces-state" class="hint" role="status" aria-live="polite"></p>
+          <ul id="faces-list" class="list"></ul>
+          <form id="faces-form" class="faces-form">
+            <label><span data-i18n="faces.name"></span> <input id="faces-name" maxlength="20" autocomplete="off" required></label>
+            <label><span data-i18n="faces.photo"></span> <input id="faces-photo" type="file" accept="image/jpeg,image/png" capture="user" required></label>
+            <label class="consent"><input id="faces-consent" type="checkbox"> <span data-i18n="faces.consent"></span></label>
+            <button id="faces-enroll" class="button primary" type="submit" data-i18n="faces.enroll"></button>
+          </form>
+          <div class="ring-discovery-controls">
+            <label class="button small"><span data-i18n="faces.check"></span><input id="faces-check" type="file" accept="image/jpeg,image/png" hidden></label>
+            <button id="faces-delete-all" class="button small danger" type="button" data-i18n="faces.deleteAll"></button>
+          </div>
+          <output id="faces-result" role="status" aria-live="polite"></output>
+        </section>
+        <section id="cloud-mcp-panel" class="panel ring-discovery admin-only" aria-labelledby="cloud-mcp-heading" data-cloud-mcp-root>
+          <h2 id="cloud-mcp-heading" data-i18n="cloud.heading"></h2>
+          <div class="cloud-mcp-labels"><span class="badge" data-i18n="cloud.label.ring"></span><span class="badge" data-i18n="cloud.label.mac"></span></div>
+          <p class="section-intro" data-i18n="cloud.introShort"></p>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="cloud-operator-passcode" data-i18n="cloud.operator.label"></label><input id="cloud-operator-passcode" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="cloud.operator.hint"></span></div>
+            <button id="cloud-login" class="button" type="button" data-i18n="cloud.login"></button>
+          </div>
+          <output id="cloud-mcp-status" role="status" aria-live="polite" data-i18n="cloud.status.initial"></output>
+          <output id="cloud-login-output" role="status" aria-live="polite" data-i18n="cloud.login.initial"></output>
+          <details id="cloud-callback-fold" class="fold inner">
+            <summary data-i18n="cloud.callback.fold"></summary>
+            <div class="ring-discovery-controls">
+              <div class="field"><label for="cloud-callback-url" data-i18n="cloud.callback.label"></label><input id="cloud-callback-url" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="cloud.callback.hint"></span></div>
+              <button id="cloud-callback-submit" class="button" type="button" data-i18n="cloud.callback.submit"></button>
+              <button id="cloud-callback-clipboard" class="button" type="button" data-i18n="cloud.callback.clipboard"></button>
+            </div>
+            <output id="cloud-callback-status" role="status" aria-live="polite" data-i18n="cloud.callback.initial"></output>
+          </details>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="cloud-device-command" data-i18n="cloud.device.label"></label><select id="cloud-device-command"></select><span class="hint" data-i18n="cloud.device.hint"></span></div>
+            <button id="cloud-device-run" class="button primary" type="button" data-i18n="cloud.device.run"></button>
+          </div>
+          <div class="ring-discovery-controls">
+            <button id="cloud-listen-run" class="button" type="button" data-i18n="cloud.listen.run"></button>
+            <span class="hint" data-i18n="cloud.listen.hint"></span>
+          </div>
+          <ol id="cloud-mcp-steps" class="list cloud-mcp-steps" aria-live="polite"></ol>
+          <output id="cloud-mcp-result" class="cloud-mcp-result" role="status" aria-live="polite" data-i18n="cloud.result.initial"></output>
+          <details class="fold inner">
+            <summary data-i18n="cloud.more"></summary>
+            <p class="section-intro" data-i18n="cloud.intro"></p>
+            <div class="ring-discovery-controls">
+              <button id="cloud-refresh" class="button small" type="button" data-i18n="common.refreshStatus"></button>
+              <button id="cloud-switch-on" class="button primary" type="button" data-i18n="cloud.switch.on"></button>
+              <button id="cloud-switch-off" class="button" type="button" data-i18n="cloud.switch.off"></button>
+            </div>
+          </details>
+        </section>
+        <details id="ring-fold" class="fold admin-only">
+          <summary data-i18n="fold.ring"></summary>
+        <section id="ring-official-panel" class="panel ring-discovery" aria-labelledby="ring-discovery-heading">
+          <h2 id="ring-discovery-heading" data-i18n="ring.heading"></h2>
+          <p class="section-intro" data-i18n="ring.intro"></p>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="ring-operator-passcode" data-i18n="ring.operator.label"></label><input id="ring-operator-passcode" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="ring.operator.hint"></span></div>
+            <button id="ring-import" class="button" type="button" data-i18n="ring.import"></button>
+            <button id="ring-discover" class="button" type="button" data-i18n="ring.discover"></button>
+          </div>
+          <output id="ring-operator-diagnostic" role="status" aria-live="polite" data-i18n="ring.diag.initial"></output>
+          <output id="ring-import-status" role="status" aria-live="polite" data-i18n="ring.import.initial"></output>
+          <output id="ring-discovery-status" role="status" aria-live="polite" data-i18n="ring.discovery.initial"></output>
+          <button id="ring-capture" class="button" type="button" data-i18n="ring.capture"></button>
+          <output id="ring-capture-status" role="status" aria-live="polite" data-i18n="ring.capture.initial"></output>
+          <div class="ring-discovery-controls">
+            <div class="field"><label for="ring-history-device" data-i18n="ring.historyDevice.label"></label><select id="ring-history-device"><option value="" data-i18n="ring.historyDevice.queryFirst"></option></select><span class="hint" data-i18n="ring.historyDevice.hint"></span></div>
+            <button id="ring-history" class="button" type="button" data-i18n="ring.history"></button>
+          </div>
+          <output id="ring-history-status" role="status" aria-live="polite" data-i18n="ring.history.initial"></output>
         </section>
         <section id="local-ring-panel" class="panel" aria-labelledby="local-ring-heading" hidden>
           <h2 id="local-ring-heading" data-i18n="localRing.heading"></h2>
@@ -179,52 +383,17 @@
           <output id="local-ring-status" role="status" aria-live="polite"></output>
           <ul id="local-ring-receipts" class="list" aria-live="polite"></ul>
         </section>
-        <section id="ring-official-panel" class="panel ring-discovery" aria-labelledby="ring-discovery-heading">
-          <h2 id="ring-discovery-heading" data-i18n="ring.heading"></h2>
-          <p class="section-intro" data-i18n="ring.intro"></p>
-          <div class="ring-discovery-controls">
-            <div class="field"><label for="ring-operator-passcode" data-i18n="ring.operator.label"></label><input id="ring-operator-passcode" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="ring.operator.hint"></span></div>
-            <button id="ring-import" class="button" type="button" data-i18n="ring.import"></button>
-            <button id="ring-discover" class="button" type="button" data-i18n="ring.discover"></button>
+        </details>
+        <details id="advanced-fold" class="fold admin-only">
+          <summary data-i18n="fold.advanced"></summary>
+        <section class="panel" aria-labelledby="wifi-permission-title" data-wifi-permission-root>
+          <h2 id="wifi-permission-title" data-i18n="wifi.title"></h2>
+          <p class="section-intro" data-i18n="wifi.intro"></p>
+          <output data-wifi-permission-status data-state="idle" role="status" aria-live="polite" aria-busy="false" data-i18n="wifi.status.initial"></output>
+          <div class="edge-controls">
+            <button class="button primary" type="button" data-wifi-authorize data-i18n="wifi.authorize"></button>
+            <button class="button" type="button" data-wifi-revoke disabled data-i18n="wifi.revoke"></button>
           </div>
-          <output id="ring-operator-diagnostic" role="status" aria-live="polite" data-i18n="ring.diag.initial"></output>
-          <output id="ring-import-status" role="status" aria-live="polite" data-i18n="ring.import.initial"></output>
-          <output id="ring-discovery-status" role="status" aria-live="polite" data-i18n="ring.discovery.initial"></output>
-          <button id="ring-capture" type="button" data-i18n="ring.capture"></button>
-          <output id="ring-capture-status" role="status" aria-live="polite" data-i18n="ring.capture.initial"></output>
-          <div class="ring-discovery-controls">
-            <div class="field"><label for="ring-history-device" data-i18n="ring.historyDevice.label"></label><select id="ring-history-device"><option value="" data-i18n="ring.historyDevice.queryFirst"></option></select><span class="hint" data-i18n="ring.historyDevice.hint"></span></div>
-            <button id="ring-history" class="button" type="button" data-i18n="ring.history"></button>
-          </div>
-          <output id="ring-history-status" role="status" aria-live="polite" data-i18n="ring.history.initial"></output>
-        </section>
-        <section id="cloud-mcp-panel" class="panel ring-discovery" aria-labelledby="cloud-mcp-heading" data-cloud-mcp-root>
-          <h2 id="cloud-mcp-heading" data-i18n="cloud.heading"></h2>
-          <div class="cloud-mcp-labels"><span class="badge" data-i18n="cloud.label.ring"></span><span class="badge" data-i18n="cloud.label.mac"></span></div>
-          <p class="section-intro" data-i18n="cloud.intro"></p>
-          <div class="ring-discovery-controls">
-            <div class="field"><label for="cloud-operator-passcode" data-i18n="cloud.operator.label"></label><input id="cloud-operator-passcode" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="cloud.operator.hint"></span></div>
-            <button id="cloud-login" class="button" type="button" data-i18n="cloud.login"></button>
-            <button id="cloud-refresh" class="button small" type="button" data-i18n="common.refreshStatus"></button>
-          </div>
-          <output id="cloud-mcp-status" role="status" aria-live="polite" data-i18n="cloud.status.initial"></output>
-          <output id="cloud-login-output" role="status" aria-live="polite" data-i18n="cloud.login.initial"></output>
-          <div class="ring-discovery-controls">
-            <div class="field"><label for="cloud-callback-url" data-i18n="cloud.callback.label"></label><input id="cloud-callback-url" type="password" autocomplete="off" spellcheck="false"><span class="hint" data-i18n="cloud.callback.hint"></span></div>
-            <button id="cloud-callback-submit" class="button" type="button" data-i18n="cloud.callback.submit"></button>
-            <button id="cloud-callback-clipboard" class="button" type="button" data-i18n="cloud.callback.clipboard"></button>
-          </div>
-          <output id="cloud-callback-status" role="status" aria-live="polite" data-i18n="cloud.callback.initial"></output>
-          <div class="ring-discovery-controls">
-            <button id="cloud-switch-on" class="button primary" type="button" data-i18n="cloud.switch.on"></button>
-            <button id="cloud-switch-off" class="button" type="button" data-i18n="cloud.switch.off"></button>
-          </div>
-          <div class="ring-discovery-controls">
-            <div class="field"><label for="cloud-device-command" data-i18n="cloud.device.label"></label><select id="cloud-device-command"></select><span class="hint" data-i18n="cloud.device.hint"></span></div>
-            <button id="cloud-device-run" class="button primary" type="button" data-i18n="cloud.device.run"></button>
-          </div>
-          <ol id="cloud-mcp-steps" class="list cloud-mcp-steps" aria-live="polite"></ol>
-          <output id="cloud-mcp-result" class="cloud-mcp-result" role="status" aria-live="polite" data-i18n="cloud.result.initial"></output>
         </section>
         <section class="panel edge-panel" aria-labelledby="edge-heading">
           <h2 id="edge-heading" data-i18n="edge.heading"></h2>
@@ -241,26 +410,18 @@
           <ul id="edge-receipts" class="list edge-receipts" aria-live="polite"></ul>
           <div id="edge-batch-wrap" hidden><h3 data-i18n="edge.batchHeading"></h3><ul id="edge-batch-results" class="list edge-receipts" aria-live="polite"></ul></div>
         </section>
-        <section aria-labelledby="devices-heading">
-          <div class="section-heading"><div><h2 id="devices-heading" data-i18n="devices.heading"></h2><p class="section-intro" data-i18n="devices.intro"></p></div><button id="refresh" class="button small" type="button" data-i18n="common.refreshStatus"></button></div>
-          <div id="devices" class="grid"></div>
+        <section class="panel section-panel" aria-labelledby="schedule-heading">
+          <h2 id="schedule-heading" data-i18n="schedule.heading"></h2><p class="section-intro" data-i18n="schedule.intro"></p>
+          <form id="schedule-form" class="form-grid">
+            <div class="field"><label for="schedule-device" data-i18n="schedule.device"></label><select id="schedule-device" required></select></div>
+            <div class="field"><label for="schedule-action" data-i18n="schedule.action"></label><select id="schedule-action" required></select></div>
+            <div id="schedule-param-field" class="field" hidden><label id="schedule-param-label" for="schedule-param" data-i18n="schedule.param"></label><input id="schedule-param"></div>
+            <div class="field"><label for="schedule-at" data-i18n="schedule.at"></label><input id="schedule-at" type="text" inputmode="numeric" autocomplete="off" pattern="\d{4}-\d{2}-\d{2} \d{2}:\d{2}" maxlength="16" required data-i18n-placeholder="schedule.atPlaceholder"></div>
+            <div class="wide"><button class="button primary" type="submit" data-i18n="schedule.submit"></button></div>
+          </form>
+          <h3 style="margin-top:25px" data-i18n="schedule.pendingHeading"></h3><ul id="schedules" class="list"></ul>
         </section>
-        <div class="columns">
-          <section class="panel section-panel" aria-labelledby="schedule-heading">
-            <h2 id="schedule-heading" data-i18n="schedule.heading"></h2><p class="section-intro" data-i18n="schedule.intro"></p>
-            <form id="schedule-form" class="form-grid">
-              <div class="field"><label for="schedule-device" data-i18n="schedule.device"></label><select id="schedule-device" required></select></div>
-              <div class="field"><label for="schedule-action" data-i18n="schedule.action"></label><select id="schedule-action" required></select></div>
-              <div id="schedule-param-field" class="field" hidden><label id="schedule-param-label" for="schedule-param" data-i18n="schedule.param"></label><input id="schedule-param"></div>
-              <div class="field"><label for="schedule-at" data-i18n="schedule.at"></label><input id="schedule-at" type="text" inputmode="numeric" autocomplete="off" pattern="\d{4}-\d{2}-\d{2} \d{2}:\d{2}" maxlength="16" required data-i18n-placeholder="schedule.atPlaceholder"></div>
-              <div class="wide"><button class="button primary" type="submit" data-i18n="schedule.submit"></button></div>
-            </form>
-            <h3 style="margin-top:25px" data-i18n="schedule.pendingHeading"></h3><ul id="schedules" class="list"></ul>
-          </section>
-          <section class="panel section-panel" aria-labelledby="audit-heading">
-            <h2 id="audit-heading" data-i18n="audit.heading"></h2><p class="section-intro" data-i18n="audit.intro"></p><ul id="audit" class="list audit"></ul>
-          </section>
-        </div>
+        </details>
       </div>
     </main>
   </div>
@@ -300,6 +461,7 @@
     };
     const el = id => document.getElementById(id);
     let token = null;
+    let role = null;
     let state = null;
     let busy = false;
     let nextRpcId = 1;
@@ -412,6 +574,40 @@
       authorization: () => (token ? "Bearer " + token : null),
       unauthorized: () => logout(false)
     });
+    // Phone pairing (public/phone-pair.mjs) hands a phone session in here; the same dashboard then runs with that role.
+    function setRole(value) {
+      role = value;
+      if (value) document.body.dataset.role = value; else delete document.body.dataset.role;
+      globalThis.dispatchEvent(new Event('home-mcp-session-changed'));
+    }
+    globalThis.homeMcpSessionPorts = Object.freeze({
+      role: () => role,
+      request: (path, method, body) => request(path, method, body),
+      // Door approval (public/door.mjs): the decision answer carries the rotated phone credential even when it is a refusal,
+      // so it needs the status and body as they are; the snapshot is an image, not JSON.
+      call: async (path, body) => {
+        const response = await fetch(path, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+          body: JSON.stringify(body), credentials: "same-origin", cache: "no-store" });
+        return { ok: response.ok, status: response.status, data: await response.json().catch(() => ({})) };
+      },
+      image: async (path) => {
+        const response = await fetch(path, { headers: token ? { Authorization: "Bearer " + token } : {}, credentials: "same-origin", cache: "no-store" });
+        return response.ok ? { blob: await response.blob(), source: response.headers.get("x-snapshot-source") } : null;
+      },
+      // Silent hand-over to a fresh one-hour session from the same paired phone: no re-render, no notice.
+      renew: (sessionToken) => { if (token && typeof sessionToken === "string") token = sessionToken; },
+      accept: async (sessionToken, info) => {
+        token = sessionToken;
+        await refresh();
+        el("login-view").hidden = true;
+        el("dashboard").hidden = false;
+        el("logout").hidden = false;
+        document.body.dataset.via = "phone";   // phone layout: developer blocks hidden, family-first order
+        setRole(info?.role === "member" ? "member" : "admin");
+        globalThis.dispatchEvent(new Event('wifi-permission-session-refresh'));
+        showNotice(tr("notice.phoneLoggedIn", { name: String(info?.name ?? "") }), false);
+      }
+    });
     globalThis.householdWifiPermissionPorts = Object.freeze({
       status: () => request('/api/wifi-trust/status'),
       consent: input => request('/api/wifi-trust/consent', 'POST', input),
@@ -499,6 +695,8 @@
     }
     function logout(notify = true) {
       token = null;
+      delete document.body.dataset.via;
+      setRole(null);
       state = null;
       lastBatchResults = null;
       el("dashboard").hidden = true;
@@ -875,17 +1073,10 @@
       let confirmationId;
       let confirmationPhrase;
       if (device.id === "front_door" && action === "unlock") {
-        const started = await request("/api/confirm/start", "POST", { deviceId: device.id, action });
-        const entered = await openDialog({ title: tr("unlock.title"), description: tr("unlock.description", { at: formatTime(started.expiresAt) }), alert: tr("unlock.alert"), code: started.phrase, codeLabel: tr("unlock.codeLabel"), codeRevealLabel: tr("unlock.reveal"), inputLabel: tr("unlock.inputLabel"), confirmLabel: tr("unlock.confirm") });
-        if (entered === null) return;
-        confirmationId = started.confirmationId;
-        confirmationPhrase = entered.trim();
-        const result = await callSimulatedDeviceTool("device_front_door", { action, parameters, confirmationId, confirmationPhrase });
-        if (result.deviceId !== "front_door" || result.action !== "unlock"
-          || result.status !== "simulated_applied" || result.state?.locked !== false) {
-          throw new Error(tr("unlock.noResult"));
-        }
-        await refresh(); showNotice(tr("notice.unlocked"), false);
+        // Asking only: the admin phone approves (public/door.mjs follows the answer).
+        const asked = await request("/api/door/request", "POST", {});
+        showNotice(tr("door.asked", { seconds: String(asked.secondsLeft ?? 60) }), false);
+        globalThis.dispatchEvent(new CustomEvent("home-mcp-door-asked", { detail: { requestId: asked.requestId } }));
         return;
       }
       const result = await request("/api/action", "POST", { deviceId: device.id, action, parameters, confirmationId, confirmationPhrase });
@@ -912,6 +1103,7 @@
         const passcode = el("passcode").value;
         const response = await request("/api/login", "POST", { passcode });
         token = response.token;
+        setRole("admin");
         el("passcode").value = "";
         await refresh();
         el("login-view").hidden = true;
@@ -922,6 +1114,7 @@
       });
     });
     el("logout").addEventListener("click", () => run(async () => {
+      globalThis.dispatchEvent(new Event('home-mcp-manual-logout'));   // a deliberate logout must not reopen by itself
       await request("/api/logout", "POST", {});
       logout();
     }));
@@ -1002,5 +1195,11 @@
   <script type="module" src="/assets/i18n-map.mjs"></script>
   <script type="module" src="/assets/wifi-permission-app.mjs"></script>
   <script type="module" src="/assets/cloud-mcp-panel.mjs"></script>
+  <script type="module" src="/assets/phone-pair.mjs"></script>
+  <script type="module" src="/assets/guardian.mjs"></script>
+  <script type="module" src="/assets/door.mjs"></script>
+  <script type="module" src="/assets/faces.mjs"></script>
+  <script type="module" src="/assets/ring-connect.mjs"></script>
+  <script type="module" src="/assets/remote-approval.mjs"></script>
 </body>
 </html>

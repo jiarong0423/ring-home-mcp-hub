@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { verifyMacProof, MAC_PROOF_HEADER } from '../../vendor/mac-command-proof.mjs';
 import { command, commandId, envelope, receipt, hash } from '../../vendor/mac-command-contract.mjs';
-import { validateFormalMcpWireRequest, formalWireErrorResponse, modernDispatchEnvelope, modernResultResponse } from '../../vendor/stateless-wire.mjs';
+import { validateFormalMcpWireRequest, formalWireErrorResponse, modernDispatchEnvelope, modernResultResponse, modernListResponse } from '../../vendor/stateless-wire.mjs';
 
 export const HOST = 'abcdefghij.execute-api.ap-southeast-1.amazonaws.com';
 export const COGNITO_HOST = 'ring-home-mcp-private-abcdefghij.auth.ap-southeast-1.amazoncognito.com';
@@ -19,6 +19,13 @@ export function makeCert() {
     '-subj', '/CN=fake', '-addext', `subjectAltName=DNS:${HOST},DNS:${COGNITO_HOST},DNS:api.amazonvision.com`], { stdio: 'ignore' });
   return { key: readFileSync(join(dir, 'k.pem')), cert: readFileSync(join(dir, 'c.pem')) };
 }
+// Shaped like the cloud's tools/list (b02-layer-runtime.mjs); descriptions shortened.
+const FAKE_TOOLS = Object.freeze([
+  { name: 'software_test_switch.set', description: 'fake', inputSchema: { type: 'object' } },
+  { name: 'software_test_switch.result', description: 'fake', inputSchema: { type: 'object' } },
+  { name: 'home_device.command', description: 'Request one action on an owner-paired SIMULATED home device', inputSchema: { type: 'object' } },
+  { name: 'home_device.result', description: 'Read the durable receipt for a previously submitted home device command', inputSchema: { type: 'object' } }
+]);
 export async function startFakeCloud({ enrollment, audience, prefix = '/staging' }) {
   const tls = makeCert();
   const state = { token: 'tok' + randomBytes(24).toString('base64url'), nonces: new Set(), queue: [], commands: new Map(),
@@ -84,6 +91,7 @@ export async function startFakeCloud({ enrollment, audience, prefix = '/staging'
     try { wire = validateFormalMcpWireRequest({ headers: { ...req.headers }, envelope: env }); }
     catch (error) { const body = formalWireErrorResponse(error, env?.id ?? null); return json(error.status ?? 400, body ?? { error: error.code }); }
     if (req.headers.authorization !== 'Bearer ' + state.token) return json(401, { error: 'B02_FORMAL_ACCESS_TOKEN_REQUIRED' });
+    if (wire.routeId === 'tools/list') return json(200, modernListResponse({ id: env.id, result: { tools: FAKE_TOOLS } }));
     if (wire.routeId !== 'tools/call') return json(400, { error: 'mcp_rest_denied' });
     const e = wire.era === 'MODERN_STATELESS' ? modernDispatchEnvelope(wire) : wire.request;
     const publicResult = row => { const st = row.state === 'SUCCEEDED' ? 'SUCCEEDED' : Date.now() >= row.command.expiresAt ? (row.state === 'CLAIMED' ? 'UNKNOWN' : 'EXPIRED') : 'PENDING';

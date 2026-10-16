@@ -88,6 +88,16 @@ Parameters:
     Default: UNCONFIGURED
     Description: SHA256 of the exact mac-enrollment-approval-v1.json bytes in the Lambda layer.
     AllowedPattern: '^(UNCONFIGURED|[a-f0-9]{64})$'
+  FamilyRelayState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [DISABLED, ENABLED]
+    Description: Family remote-approval relay (POST /relay/mac, POST /relay/phone, GET /family). Hub and phones sign every call.
+  FamilyRelayMacKeySpki:
+    Type: String
+    Default: UNCONFIGURED
+    Description: Base64url DER SPKI of the home hub's Ed25519 relay key (public key only; printed by the hub's relay keygen).
+    AllowedPattern: '^(UNCONFIGURED|[A-Za-z0-9_-]{40,80})$'
 
 Rules:
   OwnerBootstrapRequiresBrowserSession:
@@ -164,6 +174,9 @@ Conditions:
     - !Equals [!Ref OwnerBootstrapState, ENABLED]
     - !Condition FormalMcpEnabled
     - !Not [!Equals [!Ref OwnerBootstrapApprovalSha256, UNCONFIGURED]]
+  FamilyRelayEnabled: !And
+    - !Equals [!Ref FamilyRelayState, ENABLED]
+    - !Not [!Equals [!Ref FamilyRelayMacKeySpki, UNCONFIGURED]]
   MacEnrollmentEnabled: !And
     - !Equals [!Ref MacEnrollmentState, ENABLED]
     - !Condition FormalMcpEnabled
@@ -319,6 +332,8 @@ Resources:
           RING_OWNER_BOOTSTRAP_APPROVAL_SHA256: !Ref OwnerBootstrapApprovalSha256
           RING_MAC_ENROLLMENT_STATE: !If [MacEnrollmentEnabled, enabled, blocked]
           RING_MAC_ENROLLMENT_APPROVAL_SHA256: !Ref MacEnrollmentApprovalSha256
+          RING_FAMILY_RELAY_STATE: !If [FamilyRelayEnabled, enabled, blocked]
+          RING_FAMILY_RELAY_MAC_KEY: !Ref FamilyRelayMacKeySpki
           RING_BROWSER_COGNITO_DOMAIN: !If [ManagedCognitoConfigured, !Sub 'https://${McpCognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com', UNCONFIGURED]
           RING_BROWSER_CALLBACK_URI: !Ref McpCallbackUri
           RING_BROWSER_LOGOUT_URI: !Ref McpLogoutUri
@@ -655,6 +670,136 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/mac/enroll
 
+
+  # Family remote-approval relay (family-relay.mjs). Availability is decided by RING_FAMILY_RELAY_STATE (handler 503 when off).
+  RingRelayResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !GetAtt RingPrivateApi.RootResourceId
+      PathPart: relay
+
+  RingRelayMacResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingRelayResource
+      PathPart: mac
+
+  RingRelayMacMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingRelayMacResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingRelayMacInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/relay/mac
+
+  RingRelayPhoneResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingRelayResource
+      PathPart: phone
+
+  RingRelayPhoneMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingRelayPhoneResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingRelayPhoneInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/relay/phone
+
+  RingFamilyResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !GetAtt RingPrivateApi.RootResourceId
+      PathPart: family
+
+  RingFamilyMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingFamilyResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingFamilyInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/GET/family
+
+  RingFamilyAppResource:
+    Type: AWS::ApiGateway::Resource
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ParentId: !Ref RingFamilyResource
+      PathPart: app.js
+
+  RingFamilyAppMethod:
+    Type: AWS::ApiGateway::Method
+    Condition: PublicIngressEnabled
+    Properties:
+      RestApiId: !Ref RingPrivateApi
+      ResourceId: !Ref RingFamilyAppResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RingPrivateFunction.Arn}/invocations
+
+  RingFamilyAppInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: PublicIngressEnabled
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RingPrivateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/GET/family/app.js
+
   RingOwnerResource:
     Type: AWS::ApiGateway::Resource
     Condition: PublicIngressEnabled
@@ -729,6 +874,10 @@ Resources:
       - RingMacReceiptMethod
       - RingMacEnrollMethod
       - RingOwnerBootstrapMethod
+      - RingRelayMacMethod
+      - RingRelayPhoneMethod
+      - RingFamilyMethod
+      - RingFamilyAppMethod
     Properties:
       RestApiId: !Ref RingPrivateApi
 
@@ -860,7 +1009,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${RingPrivateApi}/${StageName}/POST/auth/session
 
-  RingAuthApiDeploymentV2:
+  RingAuthApiDeploymentV3:
     Type: AWS::ApiGateway::Deployment
     Condition: ManagedCognitoConfigured
     DependsOn:
@@ -878,6 +1027,10 @@ Resources:
       - RingAuthCallbackMethod
       - RingAuthLogoutMethod
       - RingAuthSessionMethod
+      - RingRelayMacMethod
+      - RingRelayPhoneMethod
+      - RingFamilyMethod
+      - RingFamilyAppMethod
     Properties:
       RestApiId: !Ref RingPrivateApi
 
@@ -886,7 +1039,7 @@ Resources:
     Condition: PublicIngressEnabled
     Properties:
       RestApiId: !Ref RingPrivateApi
-      DeploymentId: !If [ManagedCognitoConfigured, !Ref RingAuthApiDeploymentV2, !Ref RingPrivateApiDeployment]
+      DeploymentId: !If [ManagedCognitoConfigured, !Ref RingAuthApiDeploymentV3, !Ref RingPrivateApiDeployment]
       StageName: !Ref StageName
       TracingEnabled: false
       MethodSettings:

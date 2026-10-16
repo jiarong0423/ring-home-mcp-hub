@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Home MCP Guardian — remote approval</title>
+<style>
+  body { margin: 0; background: #0f1720; color: #eef3f7; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 1.4rem; margin: 6px 0 4px; }
+  .sub { color: #a9b8c6; margin: 0 0 18px; }
+  .card { background: #172331; border: 2px solid #2c4053; border-radius: 16px; padding: 16px; margin: 0 0 14px; }
+  .ask { border-color: #f2c94c; background: #3a3216; }
+  .ask h2 { font-size: 1.25rem; margin: 0 0 8px; }
+  .row { display: flex; gap: 10px; margin-top: 12px; }
+  button { flex: 1; min-height: 52px; border-radius: 12px; border: 0; font-size: 1.1rem; font-weight: 800; }
+  .approve { background: #5ee0b8; color: #0f1720; } .deny { background: #4a2626; color: #ffd1d1; border: 1px solid #a05252; }
+  .hint { color: #a9b8c6; font-size: .9rem; } .tag { display: inline-block; font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid #f2c94c; color: #f2c94c; }
+  input { width: 100%; box-sizing: border-box; min-height: 48px; border-radius: 10px; border: 1px solid #2c4053; background: #0b1218; color: #eef3f7; font-size: 1rem; padding: 0 12px; }
+</style>
+</head>
+<body>
+<main>
+  <span class="tag">SIMULATED DOOR · RING EVENTS</span>
+  <h1>Remote approval</h1>
+  <p class="sub">Your home hub asks you here when someone wants the door opened. Only this phone's own key can answer.</p>
+  <section id="enrol" class="card" hidden>
+    <p>Name this phone, then press Enable. The hub at home confirms it.</p>
+    <input id="name" maxlength="40" placeholder="Amy" autocomplete="off">
+    <div class="row"><button id="enable" class="approve" type="button">Enable on this phone</button></div>
+  </section>
+  <section id="ask" class="card ask" hidden>
+    <h2 id="ask-title"></h2>
+    <p id="ask-note" class="hint"></p>
+    <div class="row"><button id="approve" class="approve" type="button">Approve</button><button id="deny" class="deny" type="button">Deny</button></div>
+  </section>
+  <section class="card"><p id="status" role="status" aria-live="polite">Loading…</p></section>
+  <p class="hint">Door lock and appliances are simulated in this demo. No photos or tokens are stored in the cloud; the hub checks your phone's signature before anything happens.</p>
+</main>
+<script src="family/app.js" type="module"></script>
+</body>
+</html>

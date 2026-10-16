@@ -97,6 +97,51 @@ npm start
 
 Open http://127.0.0.1:8765, log in with the one-time passcode printed in the terminal, pair a device (6-digit simulated code) and control it. All seven devices are simulated; every action is audited.
 
+### A2. Use the console from your phone (pair once)
+
+With the server from A running, the terminal prints `ADMIN phone pairing code: dddd dddd` (10 minutes, single use).
+
+1. Make the phone reach the Mac's loopback port: `adb reverse tcp:8765 tcp:8765` (USB or wireless adb).
+2. On the phone open `http://127.0.0.1:8765/`, choose **Pair this phone**, enter the code and a name.
+3. Type `y` in the Mac terminal. The phone opens the console; from then on it opens directly and stays signed in. It stays trusted until you remove it.
+4. Family: in the console's **Family phones** panel press **Add a family phone** and repeat steps 1–3 on their phone. Family phones run everyday devices; unlock, disarm and settings stay with admins. **Remove** revokes a phone immediately.
+
+Pairings are stored as hashes in `~/.home-mcp-console/phones.json` (override with `HOME_MCP_PHONE_STORE`).
+
+### A3. Home guardian for an older relative (low-frequency heartbeats, alerts, daily routine)
+
+The console's **Home guardian** panel (first on the dashboard) watches the Ring camera and the home gateway with low-frequency heartbeats (camera every 5 minutes, gateway every 60 seconds) and runs a daily routine (lights, dehumidifier, AC, alarm) instead of someone pressing buttons remotely. Every run ends as ✓ confirmed (receipt), ✗ not done, or ? cannot confirm; a run missed while the gateway was down is **not** made up automatically — a family member taps **Do it now**. Alerts appear only when something changes (late → offline → back online).
+
+Demo a whole day in minutes (the clock only affects the guardian; codes and sessions keep real time):
+
+```bash
+HOME_MCP_CLOCK_SPEED=60 HOME_MCP_CLOCK_START=06:58 npm start
+```
+
+Ring camera status is real (`GET /v1/devices/{id}/status`) while a Playground token is loaded (`RING_ACCESS_TOKEN=... npm start`, about 30 minutes); without a token the camera is simulated.
+
+**Email alerts (optional, Amazon SNS):** deploy `cloud/aws/notify/notify-template.json` (one SNS topic + email subscription, a CloudWatch alarm that fires when the hub stops sending its heartbeat, and a least-privilege IAM user). Create that user's access key yourself, store it with `aws configure --profile home-mcp-notify`, then start with `HOME_MCP_NOTIFY_SNS_TOPIC_ARN=... HOME_MCP_NOTIFY_AWS_PROFILE=home-mcp-notify`. The hub calls the AWS CLI and never handles the key.
+
+### A4. Opening the door: the AI asks, the admin phone approves (SIMULATED)
+
+The Ring Partner API has no lock control, so the front door is simulated and labelled SIMULATED everywhere. Opening it never
+happens directly. An AI agent over local MCP (`device_front_door` `unlock`), a family phone or the console can only **ask**.
+The answer is `pending_approval`. The paired **admin phone** then shows a banner for 60 s with **Approve / Deny** and a Ring door
+snapshot. Approving needs that phone's own long-lived credential (kept in the phone's browser), not just a session token, so an
+agent holding a session cannot approve itself. One request at a time; single use; expiry, denial and gateway failure are all
+recorded on the guardian timeline (email for "someone is asking" and "it was opened", never with the image).
+
+- Snapshot: with a Playground token loaded, the hub calls Ring's Image Snapshots API (`POST /v1/devices/{id}/media/image/download`,
+  `latest_in_range`, 303 to a short-lived URL; the Ring token is never sent to that URL). It is kept in memory for the life of the
+  request and shown to the admin phone only. Without a token, a stand-in image labelled SIMULATED is shown with the reason.
+- Cloud, schedules and batches still cannot unlock.
+- Optional **face hint** (OpenCV YuNet + SFace, on the Mac): the admin phone may enrol a person (e.g. the carer) only with a
+  separate "this person agreed" tick. The hub keeps an AES-256-GCM encrypted 128-number feature, never the photo; delete one
+  person or everyone at any time. On a real Ring snapshot the banner then says "looks like <name>" or "not enrolled". It is a
+  hint only and never opens the door. Turn it on with `HOME_MCP_FACE_PYTHON` (a Python with `opencv-python-headless`) and
+  `HOME_MCP_FACE_MODELS` (folder with `face_detection_yunet_2023mar.onnx` and `face_recognition_sface_2021dec.onnx` from
+  opencv_zoo); without them it says "off" and approval works the same.
+
 ### B. Ring Developer Playground, read-only (your own Ring developer account)
 
 ```bash
@@ -133,7 +178,7 @@ node vendor_mac_launcher/mac-worker.mjs enroll --callback-url "<callback URL>"
 npm run start:cloud-panel
 ```
 
-In the console: pair a device → operator code → **Cognito login** → sign in → paste the callback URL (or read it from the clipboard) → choose e.g. *Living room light — Light on* → **Send to device via cloud**. The steps stream in; the run ends with `Done: result.status=SUCCEEDED, executed=true`.
+In the console: pair a device → operator code → **Cognito login** → sign in → paste the callback URL (or read it from the clipboard) → choose e.g. *Living room light — Light on* → **Send to device via cloud**. The steps stream in; the run ends with `Done: result.status=SUCCEEDED, executed=true`. One login is reused by later actions until its token expires (about 5 minutes); press **Cognito login** again after that.
 
 ### Tests
 
@@ -169,7 +214,7 @@ Everything account-specific (account id, region, API id, Cognito ids, Ring accou
 - **Single use:** idempotent command ids, one command in flight per owner, single-use approval latches, Ring token replay markers, proof nonces.
 - **Evidence, not acceptance:** `executed=true` requires a receipt that matches the claim token, envelope hash, enrolled Mac key and the exact device/action.
 - **Door safety:** no unlock or disarm from the cloud; local unlock needs a one-use confirmation.
-- **Local isolation:** the console binds to 127.0.0.1, requires a separate operator code for every cloud or Ring action (rate-limited), and never sends tokens, codes or the Mac key passphrase to the browser. The Mac worker only makes outbound requests — it opens no inbound port.
+- **Local isolation:** the console binds to 127.0.0.1, requires a separate operator code for every Ring action and once per cloud login (rate-limited), and never sends tokens, codes or the Mac key passphrase to the browser. The Mac worker only makes outbound requests — it opens no inbound port.
 
 See `SECURITY.md` and `THREAT_MODEL.md`.
 

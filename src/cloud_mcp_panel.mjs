@@ -19,6 +19,7 @@ import { pathToFileURL } from 'node:url';
 const DEFAULT_LAUNCHER_DIR = new URL('../vendor_mac_launcher/', import.meta.url);
 const DEFAULT_STATE_DIR_NAME = '.ring-mac-worker';
 const CODE = /^[A-Z][A-Z0-9_-]{1,96}$/u;
+const LISTEN_POLLS = 15, LISTEN_INTERVAL_MS = 2000;   // ~30 s: one cloud command TTL; within the launcher's 20-poll cap
 
 export class CloudPanelError extends Error {
   constructor(status, code) { super(code); this.status = status; this.code = code; }
@@ -51,6 +52,7 @@ const REDACTED = step('cloud.step.redacted');
 const STEP_PATTERNS = [
   [/^demo-switch start mode=software-direct enabled=(true|false)$/u, m => step('cloud.step.start', { enabled: m[1] })],
   [/^cognito token exchanged \(not shown\)$/u, () => step('cloud.step.cognito')],
+  [/^cognito session reused \(not shown\)$/u, () => step('cloud.step.cognitoReused')],
   [/^mcp software_test_switch\.set -> ([A-Z_]{1,32}) (cmd_[a-f0-9]{64})$/u, m => step('cloud.step.set', { status: m[1], commandId: shortCommandId(m[2]) })],
   [/^worker poll ([0-9]{1,2}): ([A-Z_]{1,32})(?: (cmd_[a-f0-9]{64}))?$/u, m => m[3]
     ? step('cloud.step.pollWithCommand', { n: m[1], status: m[2], commandId: shortCommandId(m[3]) })
@@ -58,7 +60,9 @@ const STEP_PATTERNS = [
   [/^mcp software_test_switch\.result -> ([A-Z_]{1,32}) executed=(true|false)$/u, m => step('cloud.step.result', { status: m[1], executed: m[2] })],
   [/^demo-device start mode=software-direct device=([a-z_]{1,32}) action=([a-z_]{1,16})$/u, m => step('cloud.step.deviceStart', { device: m[1], action: m[2] })],
   [/^mcp home_device\.command -> ([A-Z_]{1,32}) (cmd_[a-f0-9]{64})$/u, m => step('cloud.step.deviceSet', { status: m[1], commandId: shortCommandId(m[2]) })],
-  [/^mcp home_device\.result -> ([A-Z_]{1,32}) executed=(true|false)$/u, m => step('cloud.step.deviceResult', { status: m[1], executed: m[2] })]
+  [/^mcp home_device\.result -> ([A-Z_]{1,32}) executed=(true|false)$/u, m => step('cloud.step.deviceResult', { status: m[1], executed: m[2] })],
+  [/^listen-device start mode=software-direct polls=([0-9]{1,2})$/u, m => step('cloud.step.listenStart', { polls: m[1] })],
+  [/^listen-device applied device=([a-z_]{1,32}) action=([a-z_]{1,16}) status=([a-z_]{1,32})$/u, m => step('cloud.step.listenApplied', { device: m[1], action: m[2], status: m[3] })]
 ];
 export function sanitizeStep(line) {
   if (typeof line !== 'string') return REDACTED;
@@ -109,6 +113,7 @@ export async function createCloudMcpPanel({ env = process.env, launcherDir = DEF
 
   let keyState = null;           // cached only once 'ready'
   let staged = null;             // { callbackUrl, expiresAt, source } - single use, memory only
+  let session = null;            // { accessToken, expiresAtMs } from the first job after a login; reused until it expires, memory only
   let busy = false;
   let lastRun = null;
 
@@ -140,11 +145,14 @@ export async function createCloudMcpPanel({ env = process.env, launcherDir = DEF
     } catch { return { pending: false, expiresAt: null }; }
   }
   const stagedValid = () => staged !== null && clock() < staged.expiresAt;
+  const sessionValid = () => session !== null && clock() < session.expiresAtMs - 3000;
 
   async function status() {
     if (staged && !stagedValid()) staged = null;
+    if (session && !sessionValid()) session = null;
     return { enabled: true, mode: 'software-direct', ringSide: 'playground_sandbox', key: await probeKey(), passphraseSource,
-      login: await pendingInfo(), callbackStaged: staged !== null, busy, lastRun };
+      login: await pendingInfo(), callbackStaged: staged !== null,
+      cloudSession: session ? { active: true, expiresAt: new Date(session.expiresAtMs).toISOString() } : { active: false, expiresAt: null }, busy, lastRun };
   }
   // Busy is claimed synchronously (no await before the check-and-set) so concurrent requests cannot interleave.
   function claimBusy() { if (busy) deny(429, 'CLOUD_MCP_BUSY'); busy = true; }
@@ -153,7 +161,7 @@ export async function createCloudMcpPanel({ env = process.env, launcherDir = DEF
     claimBusy();
     try {
       if (await probeKey() !== 'ready') deny(503, 'MAC_KEY_NOT_READY');
-      staged = null;
+      staged = null; session = null;   // a new login replaces the old one
       const r = await launcher.loginUrl({ stateDir, cfg, now: clock() });
       return { authorizeUrl: r.url, expiresAt: new Date(r.expiresAt).toISOString() };
     } finally { busy = false; }
@@ -187,10 +195,14 @@ export async function createCloudMcpPanel({ env = process.env, launcherDir = DEF
     let copy = null;
     try {
       if (await probeKey() !== 'ready') deny(503, 'MAC_KEY_NOT_READY');
-      if (!stagedValid()) { staged = null; deny(409, 'CALLBACK_NOT_STAGED'); }
+      if (session && !sessionValid()) session = null;
+      if (!session && !stagedValid()) { staged = null; deny(409, 'CALLBACK_NOT_STAGED'); }
       copy = Buffer.from(passphrase);
     } catch (error) { busy = false; throw error; }
-    const { callbackUrl } = staged; staged = null;   // single use, even on failure
+    // One login serves every job until its token expires: the first job spends the staged callback (single use, even on
+    // failure) and keeps the token; later jobs reuse it. MFA is asked again only after expiry or a new login.
+    const login = session ? { token: session } : { callbackUrl: staged.callbackUrl, onToken: t => { session = t; } };
+    staged = null;
     const emitStep = ({ key, params }) => onStep({ at: new Date(clock()).toISOString(), key, params });
     let phase = 'prepared';
     const release = () => { copy.fill(0); busy = false; };
@@ -207,11 +219,12 @@ export async function createCloudMcpPanel({ env = process.env, launcherDir = DEF
         phase = 'started';
         try {
           emitStep(step(passphraseSource === 'env-test' ? 'cloud.step.gateTestSource' : 'cloud.step.gate'));
-          const out = await run({ stateDir, cfg, passphrase: copy, callbackUrl, polls: 5, intervalMs: 1000, clock, log: line => emitStep(sanitizeStep(line)) });
+          const out = await run({ stateDir, cfg, passphrase: copy, ...login, polls: 5, intervalMs: 1000, clock, log: line => emitStep(sanitizeStep(line)) });
           lastRun = { at: new Date(clock()).toISOString(), ok: out.ok, ...runInfo, executed: out.result.executed };
           return out;
         } catch (error) {
           const code = safeCode(error);
+          if (/^(OAUTH_TOKEN_|MCP_HTTP_401|MCP_BEARER)/u.test(code)) session = null;   // a rejected token is never reused
           lastRun = { at: new Date(clock()).toISOString(), ok: false, ...runInfo, error: code };
           throw new CloudPanelError(502, code);
         } finally { phase = 'done'; release(); }
@@ -245,6 +258,29 @@ export async function createCloudMcpPanel({ env = process.env, launcherDir = DEF
     });
   }
 
-  return Object.freeze({ enabled: true, stateDirDefaultName: DEFAULT_STATE_DIR_NAME, status, loginUrl, stageCallback, prepareSwitch, prepareDevice,
+  // Waits one ~30 s window (the cloud command TTL) for ONE home_device.command sent by another MCP client, e.g. an AI agent
+  // through vendor_mac_launcher/mcp-bridge.mjs. The panel sends nothing itself; the same simulator gates apply.
+  async function prepareListen(onStep = () => {}) {
+    if (typeof applyHomeDevice !== 'function') deny(503, 'HOME_DEVICE_UNAVAILABLE');
+    return prepareJob({ listen: true }, onStep, async o => {
+      let applied = null;
+      const capture = async input => {
+        const out = await applyHomeDevice(input);
+        applied = { deviceId: input.deviceId, action: input.action, status: out?.status === 'simulated_applied' ? 'simulated_applied' : 'not_applied' };
+        o.log('listen-device applied device=' + applied.deviceId + ' action=' + applied.action + ' status=' + applied.status);
+        return out;
+      };
+      const r = await launcher.listenDevice({ ...o, applyHomeDevice: capture, polls: LISTEN_POLLS, intervalMs: LISTEN_INTERVAL_MS });
+      const known = applied !== null && homeDeviceAllowed(applied.deviceId, applied.action);
+      const executed = r.worker?.executed === true && known && applied.status === 'simulated_applied';
+      return { ok: executed, mode: r.mode === 'software-direct' ? 'software-direct' : 'unknown',
+        set: { status: 'EXTERNAL', commandId: shortCommandId(r.worker?.commandId) },
+        worker: { status: String(r.worker?.status ?? 'UNKNOWN').slice(0, 32), executed: r.worker?.executed === true },
+        result: { status: String(r.worker?.status ?? 'UNKNOWN').slice(0, 32), executed, deviceId: known ? applied.deviceId : null,
+          action: known ? applied.action : null, deviceStatus: executed ? 'simulated_applied' : null } };
+    });
+  }
+
+  return Object.freeze({ enabled: true, stateDirDefaultName: DEFAULT_STATE_DIR_NAME, status, loginUrl, stageCallback, prepareSwitch, prepareDevice, prepareListen,
     keyStatus: probeKey, passphraseSource: () => passphraseSource });
 }

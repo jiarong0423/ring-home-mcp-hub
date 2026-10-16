@@ -187,7 +187,7 @@ test('panel is disabled by default: 401 without session, 404 with session, origi
   assertNoSecrets(server);
 });
 
-test('gates: no owner session -> 401 on every route; intent/origin required; wrong operator passcode denied then rate limited', async (t) => {
+test('gates: no owner session -> 401 on every route; intent/origin required; operator code only at login-url, denied then rate limited', async (t) => {
   const s = await setupCloud();
   const server = await startServer(s);
   t.after(async () => { await server.stop(); await s.cloud.close(); });
@@ -203,7 +203,8 @@ test('gates: no owner session -> 401 on every route; intent/origin required; wro
   const bearer = await login(server);
   const st = await call(server, '/api/cloud-mcp/status', { bearer });
   assert.equal(st.status, 200);
-  assert.deepEqual(Object.keys(st.body).sort(), ['busy', 'callbackStaged', 'enabled', 'key', 'lastRun', 'login', 'mode', 'passphraseSource', 'ringSide']);
+  assert.deepEqual(Object.keys(st.body).sort(), ['busy', 'callbackStaged', 'cloudSession', 'enabled', 'key', 'lastRun', 'login', 'mode', 'passphraseSource', 'ringSide']);
+  assert.deepEqual(st.body.cloudSession, { active: false, expiresAt: null });
   assert.equal(st.body.key, 'ready'); assert.equal(st.body.mode, 'software-direct');
   assert.equal((await call(server, '/api/cloud-mcp/login-url', op(bearer, undefined))).body.error, 'CLOUD_INTENT_REQUIRED');
   assert.equal((await call(server, '/api/cloud-mcp/login-url', op(bearer, 'switch'))).body.error, 'CLOUD_INTENT_REQUIRED');
@@ -219,8 +220,9 @@ test('gates: no owner session -> 401 on every route; intent/origin required; wro
   assert.equal(limited.status, 429); assert.equal(limited.body.error, 'RING_OPERATOR_RATE_LIMIT');
   // shared limiter with the existing Ring import gate
   assert.equal((await call(server, '/api/ring/import-clipboard', { method: 'POST', bearer, operator: operatorPass })).status, 429);
-  const sw = await call(server, '/api/cloud-mcp/switch', op(bearer, 'switch', { body: { enabled: true } }));
-  assert.equal(sw.status, 429);
+  // actions after login do not ask for the operator code (asked once per cloud login), so they are not rate limited either
+  const sw = await call(server, '/api/cloud-mcp/switch', { method: 'POST', bearer, intent: 'switch', body: { enabled: true } });
+  assert.equal(sw.status, 409); assert.equal(sw.body.error, 'CALLBACK_NOT_STAGED');
   assert.equal(server.https.length, 0, 'no cloud request before the gates pass');
   assert.equal(server.pbpaste, 0); assert.equal(s.cloud.state.tokenCalls ?? 0, 0);
   assertNoSecrets(server);
@@ -307,9 +309,12 @@ test('happy path: login-url -> pasted callback -> switch streams sanitized steps
     assert.match(text, /software_test_switch\.result → SUCCEEDED, executed=true/u);
     assert.match(text, /Cognito authorization code exchanged/u); assert.doesNotMatch(text, /redacted/u);
     assert.match(steps.map((m) => translate(m.key, m.params, 'zh')).join('\n'), /Cognito 授權碼交換完成/u);
-    // single use: the same staged callback cannot be replayed
-    const again = await call(server, '/api/cloud-mcp/switch', op(bearer, 'switch', { body: { enabled } }));
-    assert.equal(again.status, 409); assert.equal(again.body.error, 'CALLBACK_NOT_STAGED');
+    // one login serves later actions: no new Cognito exchange, no operator code, and the step says the session is reused
+    assert.equal((await call(server, '/api/cloud-mcp/status', { bearer })).body.cloudSession.active, true);
+    const again = await call(server, '/api/cloud-mcp/switch', { method: 'POST', bearer, intent: 'switch', body: { enabled } });
+    assert.equal(again.status, 200, again.raw); assert.equal(again.body.at(-1).ok, true, again.raw);
+    const againText = again.body.filter((m) => m.type === 'step').map((m) => translate(m.key, m.params)).join('\n');
+    assert.match(againText, /Reusing this login's Cognito session/u); assert.doesNotMatch(againText, /authorization code exchanged/u);
     return final;
   }
   // revision comes from the Mac's in-memory software switch, which demo-switch re-creates per run (launcher semantics)
@@ -317,9 +322,9 @@ test('happy path: login-url -> pasted callback -> switch streams sanitized steps
   assert.equal(on.result.revision, 1);
   const off = await cycle(false, 'clipboard');
   assert.equal(off.result.revision, 1);
-  assert.equal(s.cloud.state.tokenCalls, 2, 'exactly one Cognito exchange per switch');
+  assert.equal(s.cloud.state.tokenCalls, 2, 'exactly one Cognito exchange per login, reused by the second switch');
   const mcp = s.cloud.state.seen.filter((x) => x.url === '/staging/mcp');
-  assert.equal(mcp.length, 4);
+  assert.equal(mcp.length, 8);
   assert.deepEqual([...new Set(server.https.map((h) => h.host))].sort(), [cfg.expectedHostname, new URL(cfg.cognitoDomain).hostname].sort());
   for (const id of s.cloud.state.commands.keys()) secrets.push(id);
   const st = await call(server, '/api/cloud-mcp/status', { bearer });
@@ -335,12 +340,16 @@ test('cloud failure after the gates is reported as a sanitized ERROR line and ne
   const bearer = await login(server);
   s.cloud.state.tokenLifetimeSeconds = 1;   // token expires before /mcp is called
   const callbackUrl = s.cloud.authorize(await loginUrl(server, bearer));
-  assert.equal((await call(server, '/api/cloud-mcp/callback', op(bearer, 'callback', { body: { callbackUrl } }))).status, 200);
+  // the callback needs no operator code: it can only complete the login the operator started at login-url
+  assert.equal((await call(server, '/api/cloud-mcp/callback', { method: 'POST', bearer, intent: 'callback', body: { callbackUrl } })).status, 200);
   const r = await call(server, '/api/cloud-mcp/switch', op(bearer, 'switch', { body: { enabled: true } }));
   assert.equal(r.status, 200);
   assert.deepEqual({ type: r.body.at(-1).type, code: r.body.at(-1).code }, { type: 'error', code: 'OAUTH_TOKEN_EXPIRED' });
   assert.equal(s.cloud.state.commands.size, 0);
   assert.match(server.stderr, /^ERROR cloud-mcp switch enabled=true code=OAUTH_TOKEN_EXPIRED$/mu);
+  assert.deepEqual((await call(server, '/api/cloud-mcp/status', { bearer })).body.cloudSession, { active: false, expiresAt: null }, 'an expired token is not kept for reuse');
+  const next = await call(server, '/api/cloud-mcp/switch', { method: 'POST', bearer, intent: 'switch', body: { enabled: true } });
+  assert.equal(next.status, 409); assert.equal(next.body.error, 'CALLBACK_NOT_STAGED');
   assert.doesNotMatch(server.stdout, /ok=true/u);
   assertNoSecrets(server, [s.cloud.state.token]);
 });
@@ -488,9 +497,9 @@ test('L1: a prepared switch job that never starts is aborted: busy cleared, last
   await stage(); assert.equal((await panel.status()).callbackStaged, true, 'panel usable again after abort');
 });
 
-test('L1 server: switch and device routes release the job when the stream cannot be opened (client already gone)', async () => {
+test('L1 server: switch, device and listen routes release the job when the stream cannot be opened (client already gone)', async () => {
   const src = readFileSync(serverPath, 'utf8');
-  const i = src.indexOf('const job = isDevice ? await cloudPanel.prepareDevice(body.deviceId, body.action, onStep) : await cloudPanel.prepareSwitch(body.enabled, onStep);'); const seg = src.slice(i, i + 2200);
+  const i = src.indexOf('const job = isListen ? await cloudPanel.prepareListen(onStep)\n      : isDevice ? await cloudPanel.prepareDevice(body.deviceId, body.action, onStep) : await cloudPanel.prepareSwitch(body.enabled, onStep);'); const seg = src.slice(i, i + 2200);
   assert.ok(i > 0 && /let started = false;\s*try \{/u.test(seg) && /finally \{\s*if \(!started && job\.abort\(\)\)/u.test(seg) && seg.indexOf('started = true') < seg.indexOf('job.start()'));
 });
 
@@ -575,4 +584,59 @@ test('home device: unpaired -> not executed; paired -> executed and the simulate
   }
   assert.match(server.stdout, /cloud-mcp device living_light on ok=true executed=true mode=software-direct/u);
   assertNoSecrets(server, [s.cloud.state.token, s.key.keyId]);
+});
+
+test('listen: a command queued by another MCP client (agent bridge) is applied once by the panel; unpaired -> not executed; body must be {}', async (t) => {
+  const s = await setupCloud();
+  const server = await startServer(s);
+  t.after(async () => { await server.stop(); await s.cloud.close(); });
+  const bearer = await login(server);
+  const owner = (path, body) => call(server, path, { method: 'POST', bearer, body });
+  const lightOn = async () => (await call(server, '/api/state', { bearer })).body.devices.find((d) => d.id === 'living_light').state.power;
+  async function listen() {
+    const callbackUrl = s.cloud.authorize(await loginUrl(server, bearer));
+    assert.equal((await call(server, '/api/cloud-mcp/callback', op(bearer, 'callback', { body: { callbackUrl } }))).status, 200);
+    const r = await call(server, '/api/cloud-mcp/listen', op(bearer, 'listen', { body: {} }));
+    assert.equal(r.status, 200, r.raw); return r;
+  }
+  // the agent's home_device.command reaches the cloud queue first (fake cloud stands in for the bridge -> /mcp hop)
+  s.cloud.submitDevice('living_light', 'on');
+  const unpaired = (await listen()).body.at(-1);
+  assert.equal(unpaired.type, 'result'); assert.equal(unpaired.ok, false); assert.equal(unpaired.result.executed, false);
+  assert.equal(s.cloud.state.receipts.length, 0); assert.equal(await lightOn(), false);
+  const code = (await owner('/api/pair/start', { deviceId: 'living_light' })).body.code;
+  assert.equal((await owner('/api/pair/confirm', { deviceId: 'living_light', code })).status, 200);
+  s.cloud.submitDevice('living_light', 'on');
+  const r = await listen(); const final = r.body.at(-1);
+  assert.equal(final.ok, true, r.raw); assert.deepEqual(final.worker, { status: 'SUCCEEDED', executed: true });
+  assert.deepEqual(final.result, { status: 'SUCCEEDED', executed: true, deviceId: 'living_light', action: 'on', deviceStatus: 'simulated_applied' });
+  assert.equal(final.set.status, 'EXTERNAL'); assert.match(final.set.commandId, /^cmd_[a-f0-9]{8}…$/u);
+  assert.equal(s.cloud.state.receipts.length, 1); assert.equal(await lightOn(), true);
+  const text = r.body.filter((m) => m.type === 'step').map((m) => translate(m.key, m.params)).join('\n');
+  assert.match(text, /listen-device started: mode=software-direct, up to 15 fetches/u);
+  assert.match(text, /Agent command applied locally: device=living_light, action=on → simulated_applied/u); assert.doesNotMatch(text, /redacted/u);
+  const audit = (await call(server, '/api/state', { bearer })).body.audit;
+  assert.ok(audit.some((e) => e.deviceId === 'living_light' && e.action === 'on' && e.origin === 'cloud_mcp' && e.outcome === 'applied'));
+  for (const body of [{ x: 1 }, { deviceId: 'living_light', action: 'on' }]) {
+    const bad = await call(server, '/api/cloud-mcp/listen', op(bearer, 'listen', { body }));
+    assert.equal(bad.status, 400, bad.raw);
+  }
+  assert.equal((await call(server, '/api/cloud-mcp/listen', op(bearer, 'device', { body: {} }))).status, 403);
+  assert.match(server.stdout, /cloud-mcp listen ok=true executed=true mode=software-direct/u);
+  assertNoSecrets(server, [s.cloud.state.token, s.key.keyId]);
+});
+
+test('phone-first layout: devices, activity, cloud, then folded Ring and advanced areas; every data-i18n key exists; 44px controls', () => {
+  const html = readFileSync(join(projectDir, 'public', 'index.html'), 'utf8');
+  const at = (marker) => { const i = html.indexOf(marker); assert.ok(i > 0, marker); return i; };
+  const order = ['<section aria-labelledby="devices-heading"', '<section class="panel section-panel" aria-labelledby="audit-heading"', 'id="cloud-mcp-panel"', 'id="ring-fold"', 'id="ring-official-panel"',
+    'id="advanced-fold"', 'data-wifi-permission-root', 'aria-labelledby="edge-heading"', 'aria-labelledby="schedule-heading"'].map(at);
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'section order');
+  const cloud = html.slice(at('id="cloud-mcp-panel"'), at('id="ring-fold"'));
+  assert.ok(cloud.indexOf('id="cloud-login"') < cloud.indexOf('id="cloud-callback-fold"'), 'login first, callback folded after it');
+  for (const id of ['cloud-callback-url', 'cloud-callback-submit', 'cloud-callback-clipboard']) assert.ok(cloud.indexOf(id) > cloud.indexOf('id="cloud-callback-fold"'), id);
+  const missing = [...html.matchAll(/data-i18n(?:-[a-z-]+)?="([^"]+)"/gu)].map((m) => m[1]).filter((key) => !Object.hasOwn(I18N_MAP, key));
+  assert.deepEqual(missing, []);
+  assert.match(html, /\.button, \.button\.small, input, select \{ min-height: 44px; \}/u);
+  assert.match(readFileSync(join(projectDir, 'public', 'cloud-mcp-panel.mjs'), 'utf8'), /el\('cloud-callback-fold'\)\.open = true;/u);
 });

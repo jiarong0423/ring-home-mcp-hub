@@ -39,25 +39,34 @@ export async function loginUrl({ stateDir, cfg, now, random }) {
   return { url, expiresAt: record.expiresAt };
 }
 // Shared: validate callback, open the key BEFORE spending the single-use code, exchange once, build the worker.
-async function withWorkerSession({ stateDir, cfg, passphrase, callbackUrl, polls, clock, tokenRequest, httpsRequest, timeoutMs, applyHomeDevice }, body) {
+// A caller that already holds a token from an earlier exchange (`token`, the local console reusing one login for its
+// lifetime) skips the callback entirely; `onToken` hands a fresh token back to such a caller.
+async function withWorkerSession({ stateDir, cfg, passphrase, callbackUrl, token: given = null, onToken = () => {}, polls, clock,
+  tokenRequest, httpsRequest, timeoutMs, applyHomeDevice }, body) {
   const dirs = ensureState(stateDir);
   const identity = await readIdentity(dirs); if (!identity) throw coded('NO_IDENTITY_RUN_KEYGEN_FIRST');
   if (!Number.isSafeInteger(polls) || polls < 1 || polls > 20) throw coded('POLLS_RANGE');
-  const cb = parseCallbackUrl(callbackUrl, cfg);
-  const pending = await consumePending(dirs, { now: clock() });
-  if (pending.state !== cb.state) throw coded('CALLBACK_STATE_MISMATCH');
+  let cb = null, pending = null;
+  if (given === null) {
+    cb = parseCallbackUrl(callbackUrl, cfg);
+    pending = await consumePending(dirs, { now: clock() });
+    if (pending.state !== cb.state) throw coded('CALLBACK_STATE_MISMATCH');
+  } else if (typeof given?.accessToken !== 'string' || !Number.isSafeInteger(given.expiresAtMs) || clock() >= given.expiresAtMs - 3000) {
+    throw coded('OAUTH_TOKEN_EXPIRED');
+  }
   const signer = await openMacCommandSigningKey({ directory: dirs.keys, passphrase, ownerRef: identity.ownerRef,
     associationRevision: identity.associationRevision, audience: cfg.audience, clock });
   try {
     if (signer.keyId !== identity.keyId) throw coded('KEY_IDENTITY_MISMATCH');
-    const token = await exchangeCode(cfg, { code: cb.code, verifier: pending.verifier }, { requestImpl: tokenRequest, now: clock });
+    const token = given ?? await exchangeCode(cfg, { code: cb.code, verifier: pending.verifier }, { requestImpl: tokenRequest, now: clock });
+    if (given === null) onToken(token);
     const getAccessToken = async () => { if (clock() >= token.expiresAtMs - 3000) throw coded('OAUTH_TOKEN_EXPIRED'); return token.accessToken; };
     const client = createMacCommandHttpsClient({ baseUrl: cfg.apiBase, expectedHostname: cfg.expectedHostname, getAccessToken,
       proofSigner: signer, timeoutMs, ...(httpsRequest ? { request: httpsRequest } : {}) });
     const journal = await createMacCommandJournal({ directory: dirs.journal });
     const exec = createDirectExecutor({ identity, clock, applyHomeDevice });
     const worker = createMacCommandWorker({ transport: client, journal, clock, authorizeCommand: exec.authorizeCommand, dispatchFormal: exec.dispatchFormal });
-    return await body({ token, getAccessToken, worker });
+    return await body({ token, getAccessToken, worker, reused: given !== null });
   } finally { signer.close(); }
 }
 async function pollWorker(worker, polls, intervalMs, sleep, log = () => {}) {
@@ -83,8 +92,8 @@ export async function demoSwitch({ enabled, polls = 5, intervalMs = 1000, clock 
   log = stamp, sleep = ms => new Promise(r => setTimeout(r, ms)), random = randomBytes, ...o }) {
   if (typeof enabled !== 'boolean') throw coded('ENABLED_BOOLEAN_REQUIRED');
   log('demo-switch start mode=software-direct enabled=' + enabled);
-  return withWorkerSession({ ...o, polls, clock, timeoutMs }, async ({ getAccessToken, worker }) => {
-    log('cognito token exchanged (not shown)');
+  return withWorkerSession({ ...o, polls, clock, timeoutMs }, async ({ getAccessToken, worker, reused }) => {
+    log(reused ? 'cognito session reused (not shown)' : 'cognito token exchanged (not shown)');
     const mcp = (name, args) => getAccessToken().then(t => callMcpTool(o.cfg, { token: t, name, arguments: args,
       id: 'demo-' + random(9).toString('hex'), requestImpl: o.httpsRequest, timeoutMs: mcpTimeoutMs }));
     const set = await mcp('software_test_switch.set', { enabled });
@@ -112,8 +121,8 @@ export async function demoDevice({ deviceId, action, applyHomeDevice, polls = 5,
   if (!homeDeviceAllowed(deviceId, action)) throw coded('HOME_DEVICE_ACTION_NOT_ALLOWED');
   if (typeof applyHomeDevice !== 'function') throw coded('HOME_DEVICE_UNAVAILABLE');
   log('demo-device start mode=software-direct device=' + deviceId + ' action=' + action);
-  return withWorkerSession({ ...o, polls, clock, timeoutMs, applyHomeDevice }, async ({ getAccessToken, worker }) => {
-    log('cognito token exchanged (not shown)');
+  return withWorkerSession({ ...o, polls, clock, timeoutMs, applyHomeDevice }, async ({ getAccessToken, worker, reused }) => {
+    log(reused ? 'cognito session reused (not shown)' : 'cognito token exchanged (not shown)');
     const mcp = (name, args) => getAccessToken().then(t => callMcpTool(o.cfg, { token: t, name, arguments: args,
       id: 'demo-' + random(9).toString('hex'), requestImpl: o.httpsRequest, timeoutMs: mcpTimeoutMs }));
     const set = await mcp('home_device.command', { deviceId, action });
@@ -133,6 +142,19 @@ export async function demoDevice({ deviceId, action, applyHomeDevice, polls = 5,
       result: { status: r.status, executed: r.executed === true, deviceId: matches ? d.deviceId : null, action: matches ? d.action : null,
         deviceStatus: matches && d.status === 'simulated_applied' ? d.status : null, revision: Number.isSafeInteger(d.revision) ? d.revision : null },
       ok: r.executed === true && matches && d.status === 'simulated_applied' && w.executed === true };
+  });
+}
+// Mac side only: waits for ONE command sent by another MCP client (e.g. the agent bridge) and runs fetch/verify/apply/receipt.
+// It never calls MCP itself; the sender reads home_device.result. applyHomeDevice comes from the local owner console.
+export async function listenDevice({ applyHomeDevice, polls = 15, intervalMs = 2000, clock = Date.now, timeoutMs = 2500,
+  log = stamp, sleep = ms => new Promise(r => setTimeout(r, ms)), ...o }) {
+  if (typeof applyHomeDevice !== 'function') throw coded('HOME_DEVICE_UNAVAILABLE');
+  log('listen-device start mode=software-direct polls=' + polls);
+  return withWorkerSession({ ...o, polls, clock, timeoutMs, applyHomeDevice }, async ({ worker, reused }) => {
+    log(reused ? 'cognito session reused (not shown)' : 'cognito token exchanged (not shown)');
+    const w = (await pollWorker(worker, polls, intervalMs, sleep, log)).at(-1);
+    return { mode: 'software-direct', worker: { status: w.status, executed: w.executed === true, commandId: w.commandId ?? null },
+      ok: w.status !== 'EMPTY' && w.executed === true };
   });
 }
 export async function status({ stateDir, cfg, clock = Date.now }) {
@@ -157,6 +179,13 @@ async function ownerCall({ path, label, okStatus, body, stateDir, cfg, callbackU
   const out = { operation: label, httpStatus: r.status, status: genericStatus(r.json) };
   out.ok = r.status === 200 && (okStatus === undefined || (Array.isArray(okStatus) ? okStatus.includes(out.status) : out.status === okStatus));
   return out;
+}
+// Agent bridge login: one PKCE exchange and no Mac key (the bridge never signs). The token stays in this closure.
+export async function openBridgeSession({ stateDir, cfg, callbackUrl, clock = Date.now, tokenRequest }) {
+  const token = await cognitoToken({ stateDir, cfg, callbackUrl, clock, tokenRequest });
+  if (clock() >= token.expiresAtMs - 3000) throw coded('OAUTH_TOKEN_EXPIRED');
+  return Object.freeze({ expiresAtMs: token.expiresAtMs,
+    getAccessToken: async () => { if (clock() >= token.expiresAtMs - 3000) throw coded('OAUTH_TOKEN_EXPIRED'); return token.accessToken; } });
 }
 // body contains the Ring Playground token; it is sent once and never returned or logged.
 export const bootstrap = ({ ringToken, ...o }) => ownerCall({ ...o, path: '/owner/bootstrap', label: 'owner_bootstrap', okStatus: ['owner_bootstrapped', 'owner_renewed'], body: { ringAccessToken: ringToken } });

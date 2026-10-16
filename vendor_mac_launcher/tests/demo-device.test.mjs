@@ -79,3 +79,20 @@ test('contract: home_device envelope is exact and allowlisted; receipt result mu
     assert.throws(() => receipt({ ...base, result: r }));
   }
 });
+
+test('one login reused: onToken hands back the first exchange; later runs pass it as token, skip Cognito, and log "reused"', async () => {
+  const s = await setup();
+  try {
+    let held = null;
+    const first = await s.go({ onToken: t => { held = t; } });
+    assert.equal(first.ok, true); assert.equal(typeof held?.accessToken, 'string'); assert.equal(s.cloud.state.tokenCalls, 1);
+    s.logs.length = 0;
+    const second = await s.go({ token: held, action: 'off', callbackUrl: undefined });
+    assert.equal(second.ok, true); assert.equal(s.cloud.state.tokenCalls, 1, 'no second Cognito exchange');
+    assert.ok(s.logs.includes('cognito session reused (not shown)'));
+    assert.equal(s.applied.length, 2);
+    await assert.rejects(s.go({ token: { ...held, expiresAtMs: Date.now() + 1000 }, callbackUrl: undefined }), /OAUTH_TOKEN_EXPIRED/u);
+    await assert.rejects(s.go({ token: { expiresAtMs: Date.now() + 60_000 }, callbackUrl: undefined }), /OAUTH_TOKEN_EXPIRED/u);
+    assert.equal(s.applied.length, 2); assert.equal(s.cloud.state.tokenCalls, 1);
+  } finally { await s.cloud.close(); }
+});

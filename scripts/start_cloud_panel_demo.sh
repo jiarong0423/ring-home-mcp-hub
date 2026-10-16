@@ -45,7 +45,7 @@ fi
 printf 'Mac key state dir: %s\n' "${state_dir}" > /dev/tty
 
 printf 'Local demo login passcode: %s\n' "${HOME_MCP_DEMO_PASS}" > /dev/tty
-printf 'Independent local operator passcode (Ring import/discovery AND every cloud action): %s\n' "${HOME_MCP_RING_OPERATOR_PASS}" > /dev/tty
+printf 'Independent local operator passcode (every Ring import/discovery; once per cloud login): %s\n' "${HOME_MCP_RING_OPERATOR_PASS}" > /dev/tty
 printf 'These local passcodes change when the server restarts. Next, the server asks for the Mac key passphrase (hidden).\n' > /dev/tty
 printf 'Then check the line "Mac key: ready (passphrase source: tty)".\n' > /dev/tty
 

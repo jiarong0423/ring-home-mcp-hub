@@ -28,10 +28,9 @@ function parseBody(contentType, text, id) {
   if (!m) throw coded('MCP_RESPONSE_NO_MATCHING_ID');
   return m;
 }
-// Returns the tool's structuredContent. Fail-closed with generic codes; never includes bodies or tokens in errors.
-export function callMcpTool(cfg, { token, name, arguments: args, id, requestImpl = httpsRequest, timeoutMs = 8000 }) {
+// One POST to the cloud /mcp. Resolves the matching JSON-RPC message; fail-closed with generic codes, never bodies or tokens.
+function postMcp(cfg, { token, envelope, headers, id, requestImpl = httpsRequest, timeoutMs = 8000 }) {
   if (typeof token !== 'string' || !/^[A-Za-z0-9._-]{3,16384}$/u.test(token)) return Promise.reject(coded('MCP_BEARER'));
-  const { envelope, headers } = mcpToolCallRequest({ name, arguments: args, id });
   const body = Buffer.from(JSON.stringify(envelope));
   return new Promise((resolve, reject) => {
     let done = false, req;
@@ -53,16 +52,39 @@ export function callMcpTool(cfg, { token, name, arguments: args, id, requestImpl
           }
           let m; try { m = parseBody(res.headers['content-type'], text, id); } catch (err) { return finish(err.code); }
           if (m.error) return finish('MCP_RPC_ERROR' + (Number.isSafeInteger(m.error.code) ? '_' + m.error.code : ''));
-          const r = m.result;
-          if (!r || typeof r !== 'object' || r.isError === true) return finish('MCP_TOOL_ERROR');
-          let sc = r.structuredContent;
-          if (!sc && Array.isArray(r.content) && r.content[0]?.type === 'text') { try { sc = JSON.parse(r.content[0].text); } catch {} }
-          if (!sc || typeof sc !== 'object') return finish('MCP_RESULT_SHAPE');
-          finish(null, sc);
+          finish(null, m);
         });
       });
       req.on('error', () => finish('MCP_UNAVAILABLE'));
       req.end(body);
     } catch { finish('MCP_UNAVAILABLE'); }
   });
+}
+// Returns the tool's structuredContent. Fail-closed with generic codes; never includes bodies or tokens in errors.
+export async function callMcpTool(cfg, { token, name, arguments: args, id, requestImpl = httpsRequest, timeoutMs = 8000 }) {
+  const { envelope, headers } = mcpToolCallRequest({ name, arguments: args, id });
+  const m = await postMcp(cfg, { token, envelope, headers, id, requestImpl, timeoutMs });
+  const r = m.result;
+  if (!r || typeof r !== 'object' || r.isError === true) throw coded('MCP_TOOL_ERROR');
+  let sc = r.structuredContent;
+  if (!sc && Array.isArray(r.content) && r.content[0]?.type === 'text') { try { sc = JSON.parse(r.content[0].text); } catch {} }
+  if (!sc || typeof sc !== 'object') throw coded('MCP_RESULT_SHAPE');
+  return sc;
+}
+export function mcpToolsListRequest({ id }) {
+  const envelope = { jsonrpc: '2.0', id, method: 'tools/list', params: { _meta: {
+    'io.modelcontextprotocol/protocolVersion': MODERN_MCP_PROTOCOL_VERSION,
+    'io.modelcontextprotocol/clientCapabilities': {},
+    'io.modelcontextprotocol/clientInfo': { name: 'ring-mac-launcher', version: '0.1.0' } } } };
+  const headers = { accept: 'application/json, text/event-stream', 'content-type': 'application/json',
+    'mcp-protocol-version': MODERN_MCP_PROTOCOL_VERSION, 'mcp-method': 'tools/list' };
+  return { envelope, headers };
+}
+// Returns the cloud's tool definitions (name, description, inputSchema...) exactly as listed; first page only.
+export async function listMcpTools(cfg, { token, id, requestImpl = httpsRequest, timeoutMs = 8000 }) {
+  const { envelope, headers } = mcpToolsListRequest({ id });
+  const m = await postMcp(cfg, { token, envelope, headers, id, requestImpl, timeoutMs });
+  const tools = m.result?.tools;
+  if (!Array.isArray(tools) || tools.some(x => !x || typeof x !== 'object' || typeof x.name !== 'string')) throw coded('MCP_RESULT_SHAPE');
+  return tools;
 }

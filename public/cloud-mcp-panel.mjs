@@ -53,7 +53,7 @@ function takeOperator() {
 }
 function setBusy(value) {
   busy = value;
-  for (const id of ['cloud-login', 'cloud-refresh', 'cloud-callback-submit', 'cloud-callback-clipboard', 'cloud-switch-on', 'cloud-switch-off', 'cloud-device-run']) el(id).disabled = value;
+  for (const id of ['cloud-login', 'cloud-refresh', 'cloud-callback-submit', 'cloud-callback-clipboard', 'cloud-switch-on', 'cloud-switch-off', 'cloud-device-run', 'cloud-listen-run']) el(id).disabled = value;
 }
 async function guarded(fn) {
   if (busy) return;
@@ -68,7 +68,8 @@ async function refreshStatus() {
     const s = await (await api('/api/cloud-mcp/status')).json();
     const parts = [(KEY_STATES.has(s.key) ? t('cloud.key.' + s.key) : t('cloud.key.other', { key: s.key })) + (s.passphraseSource === 'env-test' ? t('cloud.key.testSource') : ''), t('cloud.status.mode')];
     parts.push(s.login?.pending ? t('cloud.status.loginPending', { at: fmt(s.login.expiresAt) }) : t('cloud.status.loginIdle'));
-    parts.push(s.callbackStaged ? t('cloud.status.callbackStaged') : t('cloud.status.callbackNone'));
+    parts.push(s.cloudSession?.active ? t('cloud.status.sessionActive', { at: fmt(s.cloudSession.expiresAt) })
+      : s.callbackStaged ? t('cloud.status.callbackStaged') : t('cloud.status.callbackNone'));
     if (s.lastRun) parts.push(t('cloud.status.lastRun', { at: fmt(s.lastRun.at), result: s.lastRun.ok ? t('cloud.status.lastRunOk') : t('cloud.status.lastRunFail') }));
     el('cloud-mcp-status').textContent = parts.join(t('cloud.status.separator')) + t('cloud.status.end');
   } catch (error) { el('cloud-mcp-status').textContent = t('cloud.status.error', { reason: explain(error.code) }); }
@@ -88,20 +89,19 @@ async function login() {
     a.textContent = t('cloud.login.link', { host: u.hostname });
     out.append(a, document.createTextNode(t('cloud.login.after', { at: fmt(r.expiresAt) })));
     el('cloud-callback-status').textContent = t('cloud.callback.initial');
+    el('cloud-callback-fold').open = true;   // the next step is the callback; reveal it only now
   } catch (error) { el('cloud-login-output').textContent = t('cloud.login.failed', { reason: explain(error.code) }); }
   await refreshStatus();
 }
 
 async function stage(source) {
-  const operator = takeOperator();
   const field = el('cloud-callback-url');
   const value = field.value; field.value = '';
-  if (!operator) { el('cloud-callback-status').textContent = t('cloud.needOperator'); return; }
   if (source === 'paste' && !value) { el('cloud-callback-status').textContent = t('cloud.callback.pasteFirst'); return; }
   try {
     const r = source === 'paste'
-      ? await (await api('/api/cloud-mcp/callback', { method: 'POST', intent: 'callback', operator, body: { callbackUrl: value } })).json()
-      : await (await api('/api/cloud-mcp/callback-clipboard', { method: 'POST', intent: 'callback-clipboard', operator })).json();
+      ? await (await api('/api/cloud-mcp/callback', { method: 'POST', intent: 'callback', body: { callbackUrl: value } })).json()
+      : await (await api('/api/cloud-mcp/callback-clipboard', { method: 'POST', intent: 'callback-clipboard' })).json();
     el('cloud-callback-status').textContent = t('cloud.callback.accepted', { source: r.source === 'clipboard' ? t('cloud.callback.sourceClipboard') : t('cloud.callback.sourcePaste'), at: fmt(r.expiresAt) });
   } catch (error) { el('cloud-callback-status').textContent = t('cloud.callback.rejected', { reason: explain(error.code) }); }
   await refreshStatus();
@@ -115,14 +115,13 @@ function addStep(at, text) {
 }
 
 // Shared NDJSON stream reader for one cloud job; `render` turns the final result into the result line.
+// The operator code is asked once per cloud login (login-url); actions reuse that login until it expires.
 async function runJob({ path, intent, body, running, render }) {
-  const operator = takeOperator();
   const result = el('cloud-mcp-result');
   el('cloud-mcp-steps').replaceChildren(); result.removeAttribute('data-ok');
-  if (!operator) { result.textContent = t('cloud.needOperator'); return; }
   result.textContent = running;
   try {
-    const response = await api(path, { method: 'POST', intent, operator, body });
+    const response = await api(path, { method: 'POST', intent, body });
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let final = null;
     for (;;) {
       const { value, done } = await reader.read();
@@ -161,6 +160,14 @@ function runDevice() {
       return t('cloud.result.deviceLine', { verdict, status: r.status, executed: r.executed, device: r.deviceId ?? '—', action: r.action ?? '—',
         deviceStatus: r.deviceStatus ?? '—', commandId: final.set.commandId, mode: final.mode }) + (final.ok ? '' : t('cloud.result.deviceHint')); } });
 }
+// Waits for one command sent by an external MCP client (AI agent via the bridge); the result names what was applied.
+function runListen() {
+  return runJob({ path: '/api/cloud-mcp/listen', intent: 'listen', body: {}, running: t('cloud.listen.running'),
+    render: (final, verdict) => { const r = final.result;
+      if (final.worker.status === 'EMPTY') return t('cloud.result.listenEmpty');
+      return t('cloud.result.deviceLine', { verdict, status: r.status, executed: r.executed, device: r.deviceId ?? '—', action: r.action ?? '—',
+        deviceStatus: r.deviceStatus ?? '—', commandId: final.set.commandId ?? '—', mode: final.mode }) + (final.ok ? '' : t('cloud.result.deviceHint')); } });
+}
 function fillDeviceOptions() {
   const select = el('cloud-device-command');
   select.replaceChildren(...DEVICE_ACTIONS.map(([deviceId, action], index) => {
@@ -179,5 +186,6 @@ if (root) {
   el('cloud-switch-off').addEventListener('click', () => guarded(() => runSwitch(false)));
   fillDeviceOptions();
   el('cloud-device-run').addEventListener('click', () => guarded(runDevice));
+  el('cloud-listen-run').addEventListener('click', () => guarded(runListen));
   globalThis.addEventListener?.('wifi-permission-session-refresh', () => { void refreshStatus(); });
 }
