@@ -7,6 +7,25 @@ Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring t
 - Demo video (under 3 minutes): _link added after upload_ (earlier version: https://youtu.be/_DTcUaVQPgE)
 - License: MIT
 
+## Try it in 2 minutes (judges)
+
+Needs only a Mac with Node.js ≥ 20.11. No accounts, no `npm install`, no phone; every device is simulated.
+
+```bash
+git clone https://github.com/jiarong0423/ring-home-mcp-hub.git
+cd ring-home-mcp-hub
+npm run eval
+HOME_MCP_CLOCK_SPEED=60 HOME_MCP_CLOCK_START=06:58 npm start
+```
+
+1. `npm run eval` (about 20 s) replays 30 simulated days and prints the guardian numbers in the table below.
+2. `npm start` runs a home day at 60× speed (one home hour per real minute). Open http://127.0.0.1:8765 and log in with the one-time passcode printed in the terminal.
+3. **Home guardian** panel: the 07:00 light step shows ✗ not done, because the light is not paired yet. Under **Devices**, press **Simulate pairing** on *Living room light* and type the 6-digit code shown.
+4. Press **Demo: gateway offline**. Within seconds the timeline shows "heartbeat late", then "offline". Steps due while it is down stay ✗ not done; nothing is made up on its own. Press **Demo: gateway back**, then **Do it now** on a missed step: ✓ confirmed.
+5. Press **Send today's care note**. Without AWS it shows the plain template note and says so.
+
+Optional, in order of effort: the door approval flow with a paired phone and Ring live view (A2, A4), email alerts (A3), remote approval through AWS (A5), the Bedrock care note and voice notice (A6). See [Run it locally](#run-it-locally).
+
 | Measured (reproduce with `npm run eval` / `npm run stress`) | Result |
 |---|---|
 | Gateway outages over 5 min detected (30 simulated days) | **12 / 12**, alert 4.0–4.9 min after it went quiet |
