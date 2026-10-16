@@ -10,7 +10,7 @@ export const I18N_MAP = Object.freeze({
   "html.lang": Object.freeze({ en: "en", zh: "zh-Hant" }),
   "lang.toggle": Object.freeze({ en: "中文", zh: "English" }),
   "lang.toggleAria": Object.freeze({ en: "Switch the interface to Chinese", zh: "切換為英文介面" }),
-  "page.title": Object.freeze({ en: "Home MCP · Virtual Device Console", zh: "Home MCP · 虛擬設備控制台" }),
+  "page.title": Object.freeze({ en: "Home MCP Guardian", zh: "Home MCP Guardian 居家守護" }),
   "brand.name": Object.freeze({ en: "Home MCP", zh: "Home MCP" }),
   "header.subtitle": Object.freeze({ en: "Seven-device authorization console", zh: "七設備授權控制台" }),
   "header.badge": Object.freeze({ en: "SIMULATED", zh: "SIMULATED" }),

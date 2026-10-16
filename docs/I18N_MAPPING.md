@@ -16,7 +16,7 @@ Total keys: **411**
 | `html.lang` | zh-Hant | en | i18n-map.mjs |
 | `lang.toggle` | English | 中文 | index.html header (language switch) |
 | `lang.toggleAria` | 切換為英文介面 | Switch the interface to Chinese | index.html header |
-| `page.title` | Home MCP · 虛擬設備控制台 | Home MCP · Virtual Device Console | index.html <title> |
+| `page.title` | Home MCP Guardian 居家守護 | Home MCP Guardian | index.html <title> |
 | `brand.name` | Home MCP | Home MCP | index.html header |
 | `header.subtitle` | 七設備授權控制台 | Seven-device authorization console | index.html header |
 | `header.badge` | SIMULATED | SIMULATED | index.html header |

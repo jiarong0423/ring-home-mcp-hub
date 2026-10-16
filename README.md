@@ -1,6 +1,6 @@
 # Home MCP Guardian
 
-**An older parent lives alone; Ring watches the front door. When someone is at the door, when something quietly stops (the camera, the home gateway, the hub itself) or a daily routine step does not happen, the family's phone knows. Opening the door always takes a family phone's approval, with Ring live view on the screen. An AI agent can only ask.**
+**An older parent lives alone; Ring watches the front door. When someone is at the door, when something quietly stops (the camera, the home gateway, the hub itself) or a daily routine step does not happen, the family's phone knows. Opening the door always takes approval on a trusted family phone — the admin phone, with Ring live view on its screen, or a phone the admin enabled for remote approval. An AI agent can only ask.**
 
 Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring track**, plus the **AWS Builder** mini challenge. (Repository name: `ring-home-mcp-hub`.)
 
@@ -16,7 +16,42 @@ Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring t
 | Same phone credential sent 20 times at once to approve | door opened **once**; that phone is revoked |
 | Remote approval while the cloud fails 25 % of calls | **0** wrong outcomes (9 / 10 delivered; the missed one stayed locked) |
 
-![Architecture](docs/architecture.png)
+```mermaid
+flowchart TB
+  subgraph PEOPLE["People and agents"]
+    AP["Admin phone (browser)"]
+    FP["Family phone (browser)"]
+    AG["AI agent (any MCP client)"]
+  end
+  subgraph MAC["Mac at home, 127.0.0.1 only"]
+    HUB["Home hub: src/server.mjs<br/>local MCP /mcp, pairing with a macOS dialog,<br/>door requests, guardian, voice notice,<br/>face hint (OpenCV), daily care note"]
+    SIM["SIMULATED: 7 devices,<br/>home gateway, door lock"]
+  end
+  RING["Ring API, Playground token in hub memory<br/>devices, status, Event History,<br/>Image Snapshots, Live Video (WHEP)"]
+  subgraph NOTIFY["AWS stack home-mcp-notify"]
+    SNS["Amazon SNS email"]
+    CW["CloudWatch alarm<br/>home-mcp-hub-silent"]
+    BR["Amazon Bedrock<br/>Claude Sonnet 4.5"]
+  end
+  subgraph RELAY["AWS stack home-mcp-family-relay"]
+    FURL["Lambda function URL"]
+    DDB["DynamoDB table (TTL)"]
+  end
+  AP -- "approve / deny, Ring live view" --> HUB
+  FP -- "ask to open the door" --> HUB
+  AG -- "MCP tools/call: unlock is only a request" --> HUB
+  HUB -- "commands, receipts, heartbeats" --> SIM
+  HUB -- "Bearer token" --> RING
+  HUB -- "alerts" --> SNS
+  HUB -- "HubHeartbeat every 5 min" --> CW
+  CW -- "ALARM / OK" --> SNS
+  HUB -- "converse (day's facts only)" --> BR
+  HUB -- "Ed25519-signed messages" --> FURL
+  FP -. "away from home: P-256-signed answer" .-> FURL
+  FURL --> DDB
+```
+
+More diagrams — door approval with Ring live view, remote approval through the relay, and the guardian states — are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -24,7 +59,7 @@ Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring t
 
 Caring for a parent from far away, the scary failure is not "hard to use" but **"we thought it was running and it had stopped long ago"**: the camera went offline and nobody noticed; the light that should come on did not. Many products tell you what happened at the door. This one also tells you **when the guardian itself has stopped**.
 
-And AI agents can now operate things in the home. Our rule is simple: **the AI can only ask; opening the door takes a family phone's approval** — bound to that phone's own key, so an agent holding a signed-in session still cannot approve.
+And AI agents can now operate things in the home. Our rule is simple: **the AI can only ask; opening the door takes approval on a trusted family phone** — bound to that phone's own key, so an agent holding a signed-in session still cannot approve.
 
 ## What it does (Ring at the center)
 
@@ -34,7 +69,7 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 4. **A routine with receipts:** lights, dehumidifier, AC and alarm run on the parent's schedule; each step ends as ✓ confirmed, ✗ not done or ? cannot confirm. Steps missed during an outage are **not** made up silently — the family decides.
 5. **The parent hears it:** the Mac speaker says what happened in fixed, plain sentences ("Someone is at the front door. I have asked your family." / "The door stays locked.").
 6. **Daily care note** *(Amazon Bedrock, Claude Sonnet 4.5; deployed and tested 2026-10-16)*: written only from the day's log; if the note mentions a number that is not in the log, the family gets a plain template note instead.
-7. **AI agents can only ask:** any MCP client calling the door tool gets `pending_approval`; schedules, batches and the cloud cannot unlock.
+7. **AI agents can only ask:** any MCP client (local server `/mcp`, Streamable HTTP, protocol 2025-11-25) calling the door tool gets `pending_approval`; schedules, batches and the cloud cannot unlock.
 8. **Pairing without a terminal:** the first phone enters the code shown on the Mac and the Mac shows a system dialog (**Allow**); family phones are allowed from the admin phone. Both sides show the same check digits.
 9. **Optional local face hint:** only people who agreed are enrolled; only an encrypted feature is kept (no photo); a hint only — **it never opens the door**.
 
@@ -54,6 +89,8 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | Physical Ring device | Not used (the rules accept a Ring-documented simulator) |
 
 ## Cloud MCP chain (earlier phase): how a command flows
+
+![Earlier phase: cloud MCP chain](docs/architecture.png)
 
 1. **Owner verification (Ring).** The owner signs in with Amazon Cognito (MFA). A Ring Developer Playground token is sent once to `POST /owner/bootstrap`; the Lambda calls Ring `GET /v1/users/me` and compares the SHA-256 of the Ring account id with the pinned owner account (constant-time). A single-use latch and a token replay marker prevent reuse. The association is valid for at most 24 hours.
 2. **Mac enrollment.** The owner's Mac has an Ed25519 key. An operator-approved enrollment (`POST /mac/enroll`) binds that key to the owner.
@@ -101,15 +138,16 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | Service | Role in the project |
 |---|---|
 | Amazon API Gateway (REST, regional, TLS 1.2+ security policy, throttled) | Endpoints used in the demo: `/mcp`, `/auth/*`, `/owner/bootstrap`, `/mac/enroll`, `/mac/commands/fetch`, `/mac/commands/receipt`, `/.well-known/oauth-protected-resource`. Legacy account-link routes (`/ring/token`, `/ring/link`, `/ring/complete`, `/ring/webhook`) are deployed but not part of the demonstrated flow. |
-| AWS Lambda (Node.js 24, arm64) + layer | Our MCP server and the owner / Mac endpoints; the layer holds pinned approval files |
+| AWS Lambda (Node.js 24, arm64, AWS SAM) + layer | Earlier phase: our cloud MCP server and the owner / Mac endpoints; the layer holds pinned approval files |
 | Amazon Cognito | Owner sign-in: managed login, MFA required, PKCE public client, 5-minute access tokens, MCP resource-server scopes |
 | Amazon DynamoDB | Identity links and latches, single-slot command mailbox, receipts, Mac enrollments, proof nonces, anti-rollback witness |
 | AWS KMS | Table and secret encryption; Ring account ids are envelope-sealed before storage |
 | AWS Secrets Manager | Provider and HMAC digest secrets, pinned to exact versions |
 | AWS CloudFormation, Amazon S3, IAM | Gated change-set deployments, pinned build artifacts, least-privilege deployer and runtime roles |
 | Amazon SNS + Amazon CloudWatch | Family email alerts; a dead-man alarm that emails when the hub's heartbeat metric stops |
-| AWS Lambda function URL + Amazon DynamoDB (family relay stack) | Passes signed approval messages between the hub and family phones; table rows expire by TTL |
-| Amazon Bedrock (Converse) | Optional daily care note written from the day's facts only |
+| AWS Lambda function URL (Node.js 22, arm64) + Amazon DynamoDB (stack `home-mcp-family-relay`) | Passes signed approval messages between the hub and enabled phones; table rows expire by TTL; the function's role can only read and write that table |
+| Amazon Bedrock (Converse, `global.anthropic.claude-sonnet-4-5-20250929-v1:0`) | Daily care note written from the day's facts only, called through the AWS CLI with the notifier's least-privilege profile (permission limited to that model) |
+| Amazon CloudWatch Logs | Log groups for both Lambda functions (relay logs kept 7 days) |
 
 The MCP server also pins its API Gateway id, stage, domain and function in an admission file and checks every request against it; when a request carries a different deployment id it is rejected, so a redeploy requires an explicit re-admission.
 
@@ -141,7 +179,7 @@ With the server from A running, the terminal prints `ADMIN phone pairing code: d
 1. Make the phone reach the Mac's loopback port: `adb reverse tcp:8765 tcp:8765` (USB or wireless adb).
 2. On the phone open `http://127.0.0.1:8765/`, choose **Pair this phone**, enter the code and a name.
 3. The Mac shows a system dialog with the phone's name and two check digits; press **Allow** (the terminal accepts `y` as a fallback). The phone opens the console; from then on it opens directly and stays signed in, and its credential is replaced on every use. It stays trusted until you remove it.
-4. Family: on the admin phone press **Add a family phone**; the family phone enters that code, and the **admin phone** shows **Allow / Deny** with the same check digits. Family phones run everyday devices and may **ask** to open the door; only the admin phone approves. **Remove** revokes a phone immediately.
+4. Family: on the admin phone press **Add a family phone**; the family phone enters that code, and the **admin phone** shows **Allow / Deny** with the same check digits. Family phones run everyday devices and may **ask** to open the door. At home only the admin phone approves; the admin can also enable a phone (their own or a family member's) for remote approval, see A5. **Remove** revokes a phone immediately.
 
 Pairings are stored as hashes in `~/.home-mcp-console/phones.json` (override with `HOME_MCP_PHONE_STORE`).
 
@@ -159,13 +197,13 @@ Ring camera status is real (`GET /v1/devices/{id}/status`) while a Playground to
 
 **Email alerts (optional, Amazon SNS):** deploy `cloud/aws/notify/notify-template.json` (one SNS topic + email subscription, a CloudWatch alarm that fires when the hub stops sending its heartbeat, and a least-privilege IAM user). Create that user's access key yourself, store it with `aws configure --profile home-mcp-notify`, then start with `HOME_MCP_NOTIFY_SNS_TOPIC_ARN=... HOME_MCP_NOTIFY_AWS_PROFILE=home-mcp-notify`. The hub calls the AWS CLI and never handles the key.
 
-### A4. Opening the door: the AI asks, the admin phone approves (SIMULATED)
+### A4. Opening the door: the AI asks, a trusted phone approves (SIMULATED)
 
 The Ring Partner API has no lock control, so the front door is simulated and labelled SIMULATED everywhere. Opening it never
 happens directly. An AI agent over local MCP (`device_front_door` `unlock`), a family phone or the console can only **ask**.
 The answer is `pending_approval`. The paired **admin phone** then shows a banner for 60 s with **Approve / Deny** and a Ring door
 snapshot. Approving needs that phone's own long-lived credential (kept in the phone's browser), not just a session token, so an
-agent holding a session cannot approve itself. One request at a time; single use; expiry, denial and gateway failure are all
+agent holding a session cannot approve itself. A phone enabled for remote approval (A5) can answer the same request from outside the home with its own signing key. One request at a time; single use; expiry, denial and gateway failure are all
 recorded on the guardian timeline (email for "someone is asking" and "it was opened", never with the image).
 
 - Snapshot: with a Playground token loaded, the hub calls Ring's Image Snapshots API (`POST /v1/devices/{id}/media/image/download`,
@@ -176,7 +214,7 @@ recorded on the guardian timeline (email for "someone is asking" and "it was ope
 - Optional **face hint** (OpenCV YuNet + SFace, on the Mac): the admin phone may enrol a person (e.g. the carer) only with a
   separate "this person agreed" tick. The hub keeps an AES-256-GCM encrypted 128-number feature, never the photo; delete one
   person or everyone at any time. On a real Ring snapshot the banner then says "looks like <name>" or "not enrolled". It is a
-  hint only and never opens the door. Turn it on with `HOME_MCP_FACE_PYTHON` (a Python with `opencv-python-headless`) and
+  hint only and never opens the door. Turn it on with `HOME_MCP_FACE_PYTHON` (a Python with `opencv-python-headless` and `numpy`) and
   `HOME_MCP_FACE_MODELS` (folder with `face_detection_yunet_2023mar.onnx` and `face_recognition_sface_2021dec.onnx` from
   opencv_zoo); without them it says "off" and approval works the same.
 
@@ -278,7 +316,7 @@ See `SECURITY.md` and `THREAT_MODEL.md`.
 
 ## Product feedback for Ring
 
-Submitted on Devpost; highlights: Playground tokens last ~30 minutes and cannot be refreshed; the Playground has no doorbell-press simulation and its simulated motion is video content, not Event History; the snapshot image URL answers 416 until the camera has streamed; account linking was unavailable for a non-US developer account. WHEP live view worked first time following Ring's hello-world sample.
+Full write-up in the Devpost submission and [docs/FRICTION_LOG.md](docs/FRICTION_LOG.md); highlights: Playground tokens last ~30 minutes and cannot be refreshed; the Playground has no doorbell-press simulation and its simulated motion is video content, not Event History; the snapshot image URL answers 416 until the camera has streamed; account linking was unavailable for a non-US developer account. WHEP live view worked first time following Ring's hello-world sample.
 
 ## Built during the hackathon
 
