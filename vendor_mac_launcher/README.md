@@ -1,6 +1,6 @@
 # Mac worker
 
-The owner's Mac is the only place a cloud command is executed. It fetches a command from the cloud MCP mailbox with an Ed25519-signed request proof, checks it (schema, 30-second expiry, owner, allowlist, claim token), applies it **once** (local journal), and posts a signed receipt. The cloud reports `executed=true` only after that receipt is accepted.
+Earlier phase (cloud MCP chain, not part of the demo video): the owner's Mac is the only place a cloud command is executed. It fetches a command from the cloud MCP mailbox with an Ed25519-signed request proof, checks it (schema, 30-second expiry, owner, allowlist, claim token), applies it **once** (local journal), and posts a signed receipt. The cloud reports `executed=true` only after that receipt is accepted.
 
 Execution mode is **software-direct (reduced assurance)** — see `BLOCKERS.md` for what the full formal runtime would add.
 

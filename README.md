@@ -8,7 +8,7 @@ Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring t
 
 - Demo video (under 3 minutes): _link added after upload_ (earlier version: https://youtu.be/_DTcUaVQPgE)
 - License: MIT
-- Open-source companion: [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox) (MIT), the Ring webhook mailbox from A5 as a stand-alone project for any hub without a public address
+- Open-source companion: [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox), the same webhook receiver as in [A5](#a5-approve-from-anywhere-aws-family-relay-optional), extracted as its own MIT project with a simple pull API (`POST /pull`), for any hub without a public address
 
 ## Try it in 2 minutes (judges)
 
@@ -21,9 +21,9 @@ npm run eval
 HOME_MCP_CLOCK_SPEED=60 HOME_MCP_CLOCK_START=06:58 npm start
 ```
 
-1. `npm run eval` (about 20 s) replays 30 simulated days and prints the guardian numbers in the table below.
+1. `npm run eval` (about 30 s) replays 30 simulated days and prints the guardian numbers in the table below.
 2. `npm start` runs a home day at 60× speed (one home hour per real minute). Open http://127.0.0.1:8765 and log in with the one-time passcode printed in the terminal.
-3. **Home guardian** panel: the 07:00 light step shows ✗ not done, because the light is not paired yet. Under **Devices**, press **Simulate pairing** on *Living room light* and type the 6-digit code shown.
+3. **Ring home guardian** panel: the 07:00 light step shows ✗ not done, because the light is not paired yet. Under **Devices**, press **Simulate pairing** on *Living room light* and type the 6-digit code shown.
 4. Press **Demo: gateway offline**. Within seconds the timeline shows "heartbeat late", then "offline". Steps due while it is down stay ✗ not done; nothing is made up on its own. Press **Demo: gateway back**, then **Do it now** on a missed step: ✓ confirmed.
 5. Press **Send today's care note**. Without AWS it shows the plain template note and says so.
 
@@ -36,7 +36,7 @@ Optional, in order of effort: the door approval flow with a paired phone and Rin
 | Emails sent vs. "alert on every missed heartbeat" | **59 vs 765** |
 | 100 concurrent MCP unlock calls | **1** request created, door stays locked |
 | Same phone credential sent 20 times at once to approve | door opened **once**; that phone is revoked |
-| Remote approval through a test relay failing 25 % of calls (`npm run stress`) | **0** wrong outcomes (9 / 10 delivered in the recorded run; the missed one stayed locked) |
+| Remote approval through a test relay failing 25 % of calls (`npm run stress`) | **0** wrong outcomes (9 / 10 delivered in our run on 2026-10-16; the missed one stayed locked) |
 
 ```mermaid
 flowchart TB
@@ -47,9 +47,9 @@ flowchart TB
   end
   subgraph MAC["Mac at home, 127.0.0.1 only"]
     HUB["Home hub: src/server.mjs<br/>local MCP /mcp, pairing with a macOS dialog,<br/>door requests, guardian, voice notice,<br/>face hint (OpenCV), daily care note"]
-    SIM["SIMULATED: 7 devices,<br/>home gateway, door lock"]
+    SIM["SIMULATED: 7 devices incl. the door lock,<br/>home gateway"]
   end
-  RING["Ring API, Playground token in hub memory<br/>devices, capabilities, status, Event History,<br/>Image Snapshots, Live Video (WHEP), Chime playback"]
+  RING["Ring API, Playground token in hub memory<br/>devices, capabilities, status, Event History,<br/>Image Snapshots, Live Video (WHEP)<br/>Chime playback: built to the documented API"]
   subgraph NOTIFY["AWS stack home-mcp-notify"]
     SNS["Amazon SNS email"]
     CW["CloudWatch alarm<br/>home-mcp-hub-silent"]
@@ -103,7 +103,7 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 1. **Ring at the door → family phone approves.** A doorbell press, a person seen at the door (Ring Event History, or Ring webhooks through the relay), or an AI / family request opens a banner on the admin phone with the **Ring door snapshot**, one-tap **Ring live view** (WebRTC) and an optional face hint. Approve within 60 s to open (door SIMULATED) and get a receipt; the live view and snapshot are closed and dropped as soon as you decide.
 2. **Approve from anywhere** *(deployed on AWS, tested end to end 2026-10-16)*. Family phones answer through a small AWS relay. The cloud only passes messages: every decision is signed by that phone's own key and verified again by the hub at home, so the cloud cannot fake an approval.
 3. **Three layers of "it stopped" detection:** the Ring camera (Ring device status API), the home gateway (heartbeat every 60 s) and **the hub itself** (Amazon CloudWatch emails when the hub's heartbeat stops). Alerts only on change. When the 30-minute Ring token expires, the family is emailed too; the camera is then shown as SIMULATED until a new token is pasted.
-4. **A routine with receipts:** lights, dehumidifier, AC and alarm run on the parent's schedule; each step ends as ✓ confirmed, ✗ not done or ? cannot confirm. Steps missed during an outage are **not** made up silently — the family decides.
+4. **A routine that reports back:** lights, dehumidifier, AC and alarm run on the parent's schedule; each step ends as ✓ confirmed, ✗ not done or ? cannot confirm. Steps missed during an outage are **not** made up silently — the family decides.
 5. **The parent hears it:** the Mac speaker says what happened in fixed, plain sentences ("Someone is at the front door. I have asked your family." / "The door stays locked."); when the home has a Ring Chime, it sounds at the same moments (Chime playback API, skipped when offline or snoozed).
 6. **Daily care note** *(Amazon Bedrock, Claude Sonnet 4.5; deployed and tested 2026-10-16)*: written only from the day's log; if the note mentions a time or a number that is not in the log, the family gets a plain template note instead.
 7. **AI agents can only ask:** any MCP client (local server `/mcp`, Streamable HTTP, protocol 2025-11-25) calling the door tool gets `pending_approval`; schedules, batches and the cloud cannot unlock.
@@ -117,46 +117,21 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | Ring API: devices, device status, Event History, Image Snapshots, **Live Video (WHEP)** | **Real calls** with a Ring Developer Playground token (30 min). Tested 2026-10-16: live view 1280×720 plays inside the approval banner and is closed (`DELETE`, 200) when the request ends; the snapshot works once the camera has streamed (before that, the Playground image URL answers 416 — see the friction log). The Playground has no doorbell-press simulation, so "someone rang" uses an on-screen button labelled SIMULATED |
 | How the Ring token reaches the hub | Pasted (masked) into the admin phone's **Ring connection** card; kept in the hub's memory only — never written, logged or echoed. For live view the phone sends only its WebRTC offer; the token stays on the hub |
 | Amazon SNS email + CloudWatch dead-man alarm + least-privilege IAM | **Real deployment** (CloudFormation); ALARM and OK emails received |
-| AWS family relay (Lambda function URL + its own DynamoDB table + a role limited to that table) | **Real deployment** (CloudFormation stack `home-mcp-family-relay`). Tested 2026-10-16 with `scripts/e2e_live_relay.mjs` (a scripted phone that signs like the `/family` page) against the live URL, 4 recorded runs: approval to door open 2.4–3.2 s (the hub polls the relay every 3 s); a second answer is refused (409); a removed phone is refused. Also exercised from a real phone in the demo video |
+| AWS family relay (Lambda function URL + its own DynamoDB table + a role limited to that table) | **Real deployment** (CloudFormation stack `home-mcp-family-relay`). Tested 2026-10-16 with `scripts/e2e_live_relay.mjs` (a scripted phone that signs like the `/family` page) against the live URL, 4 runs on 2026-10-16: approval to door open 2.4–3.2 s (the hub polls the relay every 3 s); a second answer is refused (409); a removed phone is refused. Also exercised from a real phone in the demo video |
 | Amazon Bedrock daily note | **Real calls** (Converse, `global.anthropic.claude-sonnet-4-5-20250929-v1:0`, through the notifier's least-privilege profile; permission limited to that model). Without Bedrock, or if the note mentions a number not in the day's log, the hub sends the template note |
-| AWS cloud MCP chain: API Gateway, Lambda, Cognito (MFA + PKCE), DynamoDB, KMS, Secrets Manager | **Real deployment** (earlier phase of this project; described below) |
+| Earlier phase: cloud MCP chain on API Gateway, Lambda, Cognito, DynamoDB, KMS, Secrets Manager | **Real deployment**, still running, not in the video; see [docs/EARLIER_PHASE_CLOUD_MCP.md](docs/EARLIER_PHASE_CLOUD_MCP.md) |
 | Phone pairing, approvals, receipts, timeline, local MCP server, voice notice | **Real**, running on the Mac |
-| Seven home devices, the home gateway, the door lock | **Software simulations** — no physical device is controlled |
+| Seven home devices (incl. the door lock) and the home gateway | **Software simulations** — no physical device is controlled |
 | Face hint | **Real**, on the Mac (OpenCV YuNet + SFace); faces in the video are AI-generated fictional people |
-| Ring partner webhooks (relay `POST /ring/webhook`) | **Real deployment** on the relay stack; HMAC check, de-duplication and the hub's pull tested 2026-10-16 against the live URL with signed events shaped like Ring's documented examples: 3 events reached the hub in 0.7–2.5 s, a repeat was dropped, and on the full hub a doorbell event became a door request and `device_offline` / `device_online` changed the camera state. Real Ring deliveries need partner credentials with account linking, which our account does not have |
+| Ring partner webhooks (relay `POST /ring/webhook`) | **Real deployment** on the relay stack; HMAC check, de-duplication and the hub's pull tested in a live run on 2026-10-16: signed test events shaped like Ring's documented examples were sent from AWS CloudShell to the live URL (reproduce with `scripts/live_webhook_test_cloudshell.sh`); 3 events reached the hub in 0.7–2.5 s, a repeat was dropped, and on the full hub a doorbell event became a door request and `device_offline` / `device_online` changed the camera state. Real Ring deliveries need partner credentials with account linking, which our account does not have |
 | Ring Chime announcements | Device discovery and capabilities ran on the real Ring API (our Playground account has one camera and no Chime, so the hub logs `no_chime`); playback, snooze and offline handling are tested against the documented responses (`tests/ring_chime.mjs`) |
 | Physical Ring device | Not used (the rules accept a Ring-documented simulator) |
-
-## Cloud MCP chain (earlier phase): how a command flows
-
-![Earlier phase: cloud MCP chain](docs/architecture.png)
-
-1. **Owner verification (Ring).** The owner signs in with Amazon Cognito (MFA). A Ring Developer Playground token is sent once to `POST /owner/bootstrap`; the Lambda calls Ring `GET /v1/users/me` and compares the SHA-256 of the Ring account id with the pinned owner account (constant-time). A single-use latch and a token replay marker prevent reuse. The association is valid for at most 24 hours.
-2. **Mac enrollment.** The owner's Mac has an Ed25519 key. An operator-approved enrollment (`POST /mac/enroll`) binds that key to the owner.
-3. **Command.** An MCP client calls `home_device.command {deviceId, action}` on our MCP server (`POST /mcp`, Streamable HTTP). Only the allowlist below is accepted. The command is stored in a single-slot DynamoDB mailbox and lives for 30 seconds.
-4. **Execution.** The Mac fetches the command with an Ed25519-signed request proof, checks it, and applies it **once** to a **paired** simulated device in the local console. A device that is not paired, a gateway set offline, or a device fault means *not applied* — cloud commands are never queued for later.
-5. **Receipt.** The Mac posts a signed receipt bound to the command id, envelope hash, device and action. Only then does `home_device.result {commandId}` return `status: SUCCEEDED, executed: true`.
-
-### Cloud allowlist (MCP `home_device.command`)
-
-| Device | Actions accepted from the cloud |
-|---|---|
-| living_light | on, off |
-| air_conditioner | on, off |
-| dehumidifier | on, off |
-| robot_vacuum | start, pause, dock |
-| camera | arm |
-| front_door | lock |
-| alarm_clock | — (local console only) |
-
-**Never accepted from the cloud:** door unlock, camera disarm, any action that takes a value (temperature, humidity, alarm time). The allowlist is checked at three points — the cloud contract, the Mac worker and the local console simulator.
 
 ## Where Ring and AWS are called in code
 
 | What | File |
 |---|---|
-| Ring `GET /v1/users/me` (owner verification, Lambda) | `cloud/aws/ring-private/ring-token-client.mjs`, used by `cloud-owner-bootstrap.mjs` |
-| Ring `GET /v1/devices` (read-only discovery, local console) | `src/ring_official_client.mjs` |
+| Ring `GET /v1/devices` (read-only discovery) | `src/ring_official_client.mjs` |
 | Ring event history probe (read-only) | `src/ring_official_history_client.mjs` |
 | Ring Event History watch (doorbell `ding`, person `motion.human`) | `src/ring_doorbell.mjs` |
 | Ring device status (camera heartbeat) | `src/server.mjs` (`ringCameraStatus`), `src/guardian.mjs` |
@@ -169,28 +144,20 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | Email alerts / dead-man alarm | `src/notify_sns.mjs`, `cloud/aws/notify/notify-template.json` |
 | Daily care note (Bedrock) | `src/care_summary.mjs` |
 | Voice notice | `src/voice_notice.mjs` |
-| MCP tools `home_device.command` / `home_device.result` | `cloud/aws/ring-private/b02-layer-runtime.mjs`, contract in `src/formal-runtime/mac-command-contract.mjs` |
-| Command queue, claim, receipt (DynamoDB) | `cloud/aws/ring-private/mac-command-service.mjs`, `mac-command-store.mjs` |
-| Mac worker (fetch / verify / apply / receipt) | `vendor_mac_launcher/` (`mac-worker.mjs`, `vendor/mac-command-worker.mjs`, `vendor/home-device-port.mjs`) |
-| Infrastructure | `cloud/aws/ring-private/template.yaml`, `bootstrap-template.yaml` |
 
 ## AWS integration (AWS Builder)
 
 | Service | Role in the project |
 |---|---|
-| Amazon API Gateway (REST, regional, TLS 1.2+ security policy, throttled) | Endpoints used in the demo: `/mcp`, `/auth/*`, `/owner/bootstrap`, `/mac/enroll`, `/mac/commands/fetch`, `/mac/commands/receipt`, `/.well-known/oauth-protected-resource`. Legacy account-link routes on API Gateway (`/ring/token`, `/ring/link`, `/ring/complete`, `/ring/webhook`) are deployed but not part of the demonstrated flow; the Ring webhook receiver in A5 is a different route, on the family relay's function URL. |
-| AWS Lambda (Node.js 24, arm64, AWS SAM) + layer | Earlier phase: our cloud MCP server and the owner / Mac endpoints; the layer holds pinned approval files |
-| Amazon Cognito | Owner sign-in: managed login, MFA required, PKCE public client, 5-minute access tokens, MCP resource-server scopes |
-| Amazon DynamoDB | Identity links and latches, single-slot command mailbox, receipts, Mac enrollments, proof nonces, anti-rollback witness |
-| AWS KMS | Table and secret encryption; Ring account ids are envelope-sealed before storage |
-| AWS Secrets Manager | Provider and HMAC digest secrets, pinned to exact versions |
-| AWS CloudFormation, Amazon S3, IAM | Gated change-set deployments, pinned build artifacts, least-privilege deployer and runtime roles |
-| Amazon SNS + Amazon CloudWatch | Family email alerts; a dead-man alarm that emails when the hub's heartbeat metric stops |
-| AWS Lambda function URL (Node.js 22, arm64) + Amazon DynamoDB (stack `home-mcp-family-relay`) | Passes signed approval messages between the hub and enabled phones, and receives Ring webhooks for the hub (`POST /ring/webhook`, X-Signature HMAC); table rows expire by TTL; the function's role can only read and write that table |
+| Amazon SNS + Amazon CloudWatch (stack `home-mcp-notify`) | Family email alerts; a dead-man alarm (`home-mcp-hub-silent`) that emails when the hub's heartbeat metric stops |
 | Amazon Bedrock (Converse, `global.anthropic.claude-sonnet-4-5-20250929-v1:0`) | Daily care note written from the day's facts only, called through the AWS CLI with the notifier's least-privilege profile (permission limited to that model) |
-| Amazon CloudWatch Logs | Log groups for both Lambda functions (relay logs kept 7 days) |
+| AWS Lambda function URL (Node.js 22, arm64) + Amazon DynamoDB (stack `home-mcp-family-relay`) | Passes signed approval messages between the hub and enabled phones, and receives Ring webhooks for the hub (`POST /ring/webhook`, X-Signature HMAC); table rows expire by TTL |
+| AWS IAM | Least-privilege roles: the relay function can only read and write its own table and log group; the notifier user can only publish to its topic, put its metric and call that one model |
+| AWS CloudFormation, Amazon S3 | Both stacks are CloudFormation templates; the relay's code bundle is uploaded to S3 |
+| Amazon CloudWatch Logs | Relay function logs, kept 7 days |
+| Amazon Polly | Narration voice of the demo video (not used by the hub) |
 
-The MCP server also pins its API Gateway id, stage, domain and function in an admission file and checks every request against it; when a request carries a different deployment id it is rejected, so a redeploy requires an explicit re-admission.
+Earlier phase (still deployed, not in the video): a cloud MCP chain on API Gateway, Lambda, Cognito, DynamoDB, KMS and Secrets Manager — see [docs/EARLIER_PHASE_CLOUD_MCP.md](docs/EARLIER_PHASE_CLOUD_MCP.md).
 
 ---
 
@@ -211,7 +178,7 @@ The local server listens on **127.0.0.1 only** (default port 8765). Nothing on t
 npm start
 ```
 
-Open http://127.0.0.1:8765, log in with the one-time passcode printed in the terminal, pair a device (6-digit simulated code) and control it. All seven devices are simulated; every action is audited.
+Open http://127.0.0.1:8765, log in with the one-time passcode printed in the terminal, pair a device (6-digit simulated code) and control it. All seven devices (incl. the door lock) are simulated; every action is audited.
 
 ### A2. Use the console from your phone (pair once)
 
@@ -226,7 +193,7 @@ Pairings are stored as hashes in `~/.home-mcp-console/phones.json` (override wit
 
 ### A3. Home guardian for an older relative (low-frequency heartbeats, alerts, daily routine)
 
-The console's **Home guardian** panel (first on the dashboard) watches the Ring camera and the home gateway with low-frequency heartbeats (camera every 5 minutes, gateway every 60 seconds) and runs a daily routine (lights, dehumidifier, AC, alarm) instead of someone pressing buttons remotely. Every run ends as ✓ confirmed (receipt), ✗ not done, or ? cannot confirm; a run missed while the gateway was down is **not** made up automatically — a family member taps **Do it now**. Alerts appear only when something changes (late → offline → back online).
+The console's **Ring home guardian** panel (first on the dashboard) watches the Ring camera and the home gateway with low-frequency heartbeats (camera every 5 minutes, gateway every 60 seconds) and runs a daily routine (lights, dehumidifier, AC, alarm) instead of someone pressing buttons remotely. Every run ends as ✓ confirmed (receipt), ✗ not done, or ? cannot confirm; a run missed while the gateway was down is **not** made up automatically — a family member taps **Do it now**. Alerts appear only when something changes (late → offline → back online).
 
 Demo a whole day in minutes (the clock only affects the guardian; codes and sessions keep real time):
 
@@ -263,7 +230,7 @@ recorded on the guardian timeline (email for "someone is asking" and "it was ope
 
 Deploy `cloud/aws/family-relay/template.json` (parameters: the hub's relay **public** key, printed at start, and the code bundle from `node scripts/build_family_relay_bundle.mjs <dir>`), then start the hub with `HOME_MCP_RELAY_BASE=<RelayBaseUrl output>`. On the admin phone, **Remote approval → Enable remote approval** gives a one-time link (10 minutes) for this phone or a family phone. That phone makes its own key in the browser; the hub confirms it. Door requests then appear on the relay page as text only (who asks, seconds left — never the snapshot), and an approval is verified by the hub with that phone's key before anything opens. The door-request email carries the page link once a phone is enabled. **Remove** on the admin phone stops a phone at once.
 
-**Ring webhooks through the same relay (optional).** A hub at home sits behind NAT, so it cannot receive Ring's webhooks itself. The relay's `POST /ring/webhook` is the public HTTPS endpoint: it checks the documented `X-Signature` (`sha256=` + HMAC-SHA256 of the raw body, with the HMAC key issued with your Ring partner credentials), drops repeats by `meta.request_id`, answers quickly (Ring expects a reply within 5 seconds; the work is a few table reads and writes), and keeps only the event type, sub-type, device id and time (no thumbnails, no account id). Start the hub with `HOME_MCP_RING_WEBHOOKS=on` and it pulls the queue every 10 s over its signed channel; the first pull only notes the position, so older events never open anything. `button_press`, `person_detected` and human `motion_detected` become door requests while fresh (2 minutes); `device_offline` / `device_online` change the guardian's camera state at once (one email each way). Deploy with `RingWebhookHmacKey` (NoEcho; empty = the route answers 503). Receiving real Ring webhooks needs Ring partner credentials with account linking, which our developer account does not have, so this path is tested with payloads shaped like the documented examples (`tests/remote_relay.mjs`, `cloud/aws/ring-private/tests/family-relay.test.mjs`) and with signed test events against the live relay. The same mailbox is published as a stand-alone MIT project: [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox).
+**Ring webhooks through the same relay (optional).** A hub at home sits behind NAT, so it cannot receive Ring's webhooks itself. The relay's `POST /ring/webhook` is the public HTTPS endpoint: it checks the documented `X-Signature` (`sha256=` + HMAC-SHA256 of the raw body, with the HMAC key issued with your Ring partner credentials), drops repeats by `meta.request_id`, answers quickly (Ring expects a reply within 5 seconds; the work is a few table reads and writes), and keeps only the event type, sub-type, device id and time (no thumbnails, no account id). Start the hub with `HOME_MCP_RING_WEBHOOKS=on` and it pulls the queue every 10 s over its signed channel; the first pull only notes the position, so older events never open anything. `button_press`, `person_detected` and human `motion_detected` become door requests while fresh (2 minutes); `device_offline` / `device_online` change the guardian's camera state at once (one email each way). Deploy with `RingWebhookHmacKey` (NoEcho; empty = the route answers 503). Receiving real Ring webhooks needs Ring partner credentials with account linking, which our developer account does not have, so this path is tested with payloads shaped like the documented examples (`tests/remote_relay.mjs`, `cloud/aws/ring-private/tests/family-relay.test.mjs`) and in a live run on 2026-10-16 with signed test events sent from AWS CloudShell (reproduce with `scripts/live_webhook_test_cloudshell.sh`) to the live relay. The same webhook receiver, extracted as its own MIT project with a simple pull API (`POST /pull` instead of the relay's signed `ringEvents` op): [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox).
 
 ### A6. Voice notice and daily care note (optional)
 
@@ -271,92 +238,32 @@ Deploy `cloud/aws/family-relay/template.json` (parameters: the hub's relay **pub
 - `HOME_MCP_VOICE=on` (Chinese: `HOME_MCP_VOICE_LANG=zh`): the Mac speaker says what the hub did for the person at home — door requests and decisions, missed routine steps, outages and recoveries. Fixed sentences only; requester text is never read aloud.
 - Daily care note: deploy the notify stack with `CareSummaryModelArns` (for a global cross-Region profile give both ARNs: `arn:aws:bedrock:<region>:<account>:inference-profile/global.anthropic.claude-sonnet-4-5-20250929-v1:0,arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0`) and start with `HOME_MCP_BEDROCK_MODEL=global.anthropic.claude-sonnet-4-5-20250929-v1:0`. The first use of an Anthropic model in an account needs the Anthropic use case form (Bedrock console) and one call by a principal allowed to subscribe in AWS Marketplace. At `HOME_MCP_SUMMARY_AT` (default 21:00), or when an admin taps **Send today's care note**, the hub emails a short note written by Bedrock from the day's facts (times, devices, actions, outcomes). Sentences that summarise "everything else" are dropped because the log cannot back them; without Bedrock, or if the note mentions a time or a number not in the facts, it sends a plain template note and says so.
 
-### B. Ring Developer Playground, read-only (your own Ring developer account)
-
-```bash
-npm run start:ring-playground
-```
-
-1. Log in with the printed **demo passcode**.
-2. In *Ring official device discovery*, enter the printed **operator code**.
-3. In the Ring Developer Playground, generate a token and copy it.
-4. Click **Import token from local clipboard** — the token goes straight into server memory; the page never sees it.
-5. Enter the operator code again and click **Query Ring devices manually**. You get a de-identified device count; nothing is paired or operated.
-
-Playground tokens expire after about 30 minutes; generate a fresh one if you see HTTP 401.
-
-### C. Full cloud chain (requires your own AWS stack — see below)
-
-```bash
-export RING_HUB_API_BASE=https://<api-id>.execute-api.<region>.amazonaws.com/<stage>
-export RING_HUB_COGNITO_DOMAIN=https://<domain-prefix>.auth.<region>.amazoncognito.com
-export RING_HUB_CLIENT_ID=<public PKCE app client id>
-export RING_MAC_STATE_DIR="$HOME/.ring-mac-worker"
-
-# one-time owner ceremony (each step needs its own Cognito login URL)
-node vendor_mac_launcher/mac-worker.mjs keygen --owner-ref owner/<you> --association-revision 1
-#   -> prints keyId, publicKeySpki and an approvalSkeleton. Add "expiresAt" (epoch ms, at most 24 h ahead),
-#      save it as mac-enrollment-approval-v1.json in the Lambda layer and set MacEnrollmentApprovalSha256 to its sha256.
-#      The owner approval (owner-bootstrap-approval-v1.json: Cognito sub + SHA-256 of your Ring account id) is pinned the same way
-#      via OwnerBootstrapApprovalSha256. `node vendor_mac_launcher/mac-worker.mjs ring-demo` prints that Ring account hash.
-node vendor_mac_launcher/mac-worker.mjs login-url        # open the printed URL, sign in, copy the callback URL
-RING_PLAYGROUND_TOKEN="<fresh Playground token>" node vendor_mac_launcher/mac-worker.mjs bootstrap --callback-url "<callback URL>"
-node vendor_mac_launcher/mac-worker.mjs enroll --callback-url "<callback URL>"
-
-# console with the Cloud MCP panel (asks for the Mac key passphrase, hidden)
-npm run start:cloud-panel
-```
-
-In the console: pair a device → operator code → **Cognito login** → sign in → paste the callback URL (or read it from the clipboard) → choose e.g. *Living room light — Light on* → **Send to device via cloud**. The steps stream in; the run ends with `Done: result.status=SUCCEEDED, executed=true`. One login is reused by later actions until its token expires (about 5 minutes); press **Cognito login** again after that.
-
 ### Tests
 
 ```bash
-npm test                  # 266 tests: hub, pairing, door approval, live view, family relay, Ring webhooks, Ring Chime, guardian, email alerts, voice, care note, Ring clients (offline fakes)
+npm test                  # 266 tests (2 face-hint tests skip when the models are absent): hub, pairing, door approval, live view, family relay, Ring webhooks, Ring Chime, guardian, email alerts, voice, care note, Ring clients (offline fakes)
 npm run eval              # 30 simulated days of outages, blips and routine steps (numbers above)
 npm run stress            # 8 stress scenarios against the real server with a deliberately failing fake cloud
-npm run test:mac-worker   # 40 tests, Mac worker: keygen, PKCE, signed fetch/receipt, home_device flow against a fake cloud
+npm run test:mac-worker   # 40 tests, earlier phase only: the Mac worker of the cloud MCP chain (against a fake cloud)
 ```
 
 Cloud tests live in `cloud/aws/ring-private/tests` (run `npm ci` there first; some tests need `RING_TRANSPORT_TEST_ROOT=/private/tmp/<dir>`).
 
-## Deploy your own AWS stack (outline)
-
-1. Deploy `cloud/aws/ring-private/bootstrap-template.yaml` (artifact bucket, CloudFormation execution role, runtime role) and create the KMS alias it expects.
-2. Build the Lambda artifact (every source file and dependency is SHA-256 pinned) and upload the zip to the artifact bucket:
-   ```bash
-   (cd cloud/aws/ring-private && npm ci --omit=dev)
-   mkdir -p output/isolation/current_runs/build
-   cp cloud/aws/ring-private/artifact-pins.json output/isolation/current_runs/build/pins.json
-   node scripts/build_ring_private_artifact.mjs --root "$PWD" --out "$PWD/output/isolation/current_runs/build/artifact" --pins "$PWD/output/isolation/current_runs/build/pins.json"
-   (cd output/isolation/current_runs/build/artifact && zip -qrX ../lambda.zip .)
-   ```
-   The builder refuses any file whose hash differs from the pins; regenerate `artifact-pins.json` (and the `FIXED` list in the builder) if you change the code.
-3. Deploy `cloud/aws/ring-private/template.yaml` with public ingress disabled, store the secret values and pin their version ids.
-4. Enable ingress, build the gateway admission file for the live API id / stage / deployment, publish the layer, and set the approval hashes and state parameters.
-5. Create the single Cognito owner user (MFA), then run the owner ceremony from section C.
-
-Everything account-specific (account id, region, API id, Cognito ids, Ring account pin, Mac key) is a parameter — nothing is hard-coded.
-
 ## Security model
 
-- **Owner only:** Cognito MFA + PKCE, plus a Ring account pinned to the owner; single owner, admin-created users only.
-- **Short-lived by design:** 5-minute access tokens, 30-second commands, owner association and Mac enrollment approvals of at most 24 hours.
-- **Single use:** idempotent command ids, one command in flight per owner, single-use approval latches, Ring token replay markers, proof nonces.
-- **Evidence, not acceptance:** `executed=true` requires a receipt that matches the claim token, envelope hash, enrolled Mac key and the exact device/action.
-- **Door safety:** no unlock or disarm from the cloud; opening is a request that only the admin phone (its own rotating credential) or a relay-enabled phone (its own signing key, verified at home) can approve; a reused phone credential revokes that phone.
-- **Local isolation:** the console binds to 127.0.0.1, requires a separate operator code for every Ring action and once per cloud login (rate-limited), and never sends tokens, codes or the Mac key passphrase to the browser. The Mac worker only makes outbound requests — it opens no inbound port.
+- **Door safety:** no unlock or disarm from the cloud, schedules or batches; opening is a request that only the admin phone (its own rotating credential) or a relay-enabled phone (its own signing key, verified at home) can approve; one request at a time, 60 s, single use.
+- **Relay signatures:** every hub call to the relay is signed with the hub's Ed25519 key (public key pinned in the stack); a remote phone signs its answer with its own P-256 key made in the browser, and the hub verifies it again at home, so the relay cannot fake an approval; a second answer is refused.
+- **Phone credential rotation:** the admin phone's credential is replaced on every use; presenting an old one means a copy exists, so that phone is revoked; **Remove** revokes a phone at once.
+- **Local isolation:** the hub binds to 127.0.0.1 and rejects requests whose Host or Origin is not the local address; Ring actions from a desktop session need a separate operator code (the admin phone stands in); Ring tokens are kept in hub memory and never sent to the browser.
+- **Webhook HMAC:** the relay accepts a Ring webhook only with a valid `X-Signature` (HMAC-SHA256 of the raw body, constant-time compare), drops repeats by `meta.request_id`, and answers 503 until the HMAC key is set.
 
-See `SECURITY.md` and `THREAT_MODEL.md`.
+See [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ## Limitations (honest scope)
 
 - The Ring side uses the **Ring Developer Playground sandbox**; production Ring account linking (and so webhooks and refresh tokens) was not available to our account, so the hub polls Event History every 10 s while a 30-minute Playground token is loaded. The webhook mailbox is deployed and tested with signed events in the documented format, but has not received a real Ring delivery; Chime playback has not run on a real Chime.
 - The family relay and the Bedrock note are optional; until deployed, approval works from the admin phone at home and the daily note is the template.
-- The seven home devices are **software simulations**; six accept allowlisted cloud actions.
-- The Mac worker runs in **software-direct, reduced-assurance mode** (no local Wi-Fi trust or anti-rollback re-check on the Mac).
-- Approvals are short-lived and renewed by an operator ceremony; there is no automatic renewal yet.
-- Some legacy modules from earlier iterations (e.g. `telegram-*`, account-link routes) remain in the code but are not part of the demonstrated flow.
+- The seven home devices (incl. the door lock) are **software simulations**.
 
 ## Product feedback for Ring
 

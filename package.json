@@ -1,7 +1,7 @@
 {
   "name": "ring-home-mcp-hub",
   "version": "1.0.0",
-  "description": "Home MCP Guardian: Ring at the door, the family phone approves, the AI can only ask; a guardian that also tells you when it stopped. Earlier phase: an MCP home hub that acts only for a Ring-verified owner and reports executed=true only after a verified receipt.",
+  "description": "Home MCP Guardian: Ring at the door, the family phone approves, the AI can only ask; a guardian that also tells you when it stopped.",
   "license": "MIT",
   "private": true,
   "type": "module",

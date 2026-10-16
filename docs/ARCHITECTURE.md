@@ -8,7 +8,7 @@ Five views of Home MCP Guardian, kept in sync with the code (file names in the b
 4. [Guardian](#4-guardian) — how "something quietly stopped" is detected
 5. [Ring webhooks and Chime](#5-ring-webhooks-and-chime) — Ring events for a hub behind NAT, and announcements on a Ring Chime
 
-The earlier phase of the project (a cloud MCP chain with Cognito, API Gateway and a Mac worker that returns signed receipts) is shown in [`architecture.png`](architecture.png) and described in the README.
+The earlier phase of the project (a cloud MCP chain with Cognito, API Gateway and a Mac worker that returns signed receipts) is shown in [`architecture.png`](architecture.png) and described in [`EARLIER_PHASE_CLOUD_MCP.md`](EARLIER_PHASE_CLOUD_MCP.md).
 
 ## 1. System
 
@@ -21,9 +21,9 @@ flowchart TB
   end
   subgraph MAC["Mac at home, 127.0.0.1 only"]
     HUB["Home hub: src/server.mjs<br/>local MCP /mcp, pairing with a macOS dialog,<br/>door requests, guardian, voice notice,<br/>face hint (OpenCV), daily care note"]
-    SIM["SIMULATED: 7 devices,<br/>home gateway, door lock"]
+    SIM["SIMULATED: 7 devices incl. the door lock,<br/>home gateway"]
   end
-  RING["Ring API, Playground token in hub memory<br/>devices, capabilities, status, Event History,<br/>Image Snapshots, Live Video (WHEP), Chime playback"]
+  RING["Ring API, Playground token in hub memory<br/>devices, capabilities, status, Event History,<br/>Image Snapshots, Live Video (WHEP)<br/>Chime playback: built to the documented API"]
   subgraph NOTIFY["AWS stack home-mcp-notify"]
     SNS["Amazon SNS email"]
     CW["CloudWatch alarm<br/>home-mcp-hub-silent"]
@@ -170,7 +170,7 @@ stateDiagram-v2
 
 ## 5. Ring webhooks and Chime
 
-A hub at home sits behind NAT, so Ring's partner webhooks go to the relay's public `POST /ring/webhook`, and the hub pulls them over its signed channel. Real Ring deliveries need partner credentials with account linking, which our developer account does not have; this path was tested against the live relay with signed events shaped like Ring's documented examples (0.7–2.5 s from delivery to the hub). The Playground has no Chime: finding devices and their capabilities ran on the real Ring API, and playback is tested against the documented responses.
+A hub at home sits behind NAT, so Ring's partner webhooks go to the relay's public `POST /ring/webhook`, and the hub pulls them over its signed channel. Real Ring deliveries need partner credentials with account linking, which our developer account does not have; this path was tested against the live relay with signed events shaped like Ring's documented examples (0.7–2.5 s from delivery to the hub; reproduce with `scripts/live_webhook_test_cloudshell.sh`). The Playground has no Chime: finding devices and their capabilities ran on the real Ring API, and playback is tested against the documented responses.
 
 ```mermaid
 sequenceDiagram
@@ -204,8 +204,8 @@ sequenceDiagram
     H->>C: GET /v1/devices/{id}/status (skip when offline or snoozed)
     H->>C: GET /v1/devices/{id}/configurations (first enabled audio slot)
     H->>C: POST /v1/devices/{id}/media/audio/playback with its audio_ref
-    C-->>H: status completed (the Mac voice speaks as well)
+    C-->>H: status completed (the Mac voice also speaks when HOME_MCP_VOICE=on)
   end
 ```
 
-The same mailbox is published on its own as an MIT project, [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox) (CloudFormation template, client, tests).
+[ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox) is the same webhook receiver, extracted as its own MIT project with a simple pull API (CloudFormation template, client, tests).

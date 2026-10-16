@@ -383,7 +383,7 @@ function maybeDailySummary() {
   }
 }
 
-// Family remote approval through the AWS relay (AWS_REMOTE_APPROVAL_PLAN_zh.md). On only with HOME_MCP_RELAY_BASE (https).
+// Family remote approval through the AWS relay (see docs/ARCHITECTURE.md section 3). On only with HOME_MCP_RELAY_BASE (https).
 let remoteRelay = null; let relayKeySpki = null;
 if (directEntry && demoMcpEnabled && process.env.HOME_MCP_RELAY_BASE) {
   try {
@@ -2130,7 +2130,7 @@ if (directEntry) {
     if (guardian) console.log(`Care summary: daily at ${SUMMARY_AT} (guardian clock), ${careSummary.status().bedrock === 'configured' ? `Bedrock ${careSummary.status().modelId}` : 'template only (HOME_MCP_BEDROCK_MODEL not set)'}.`);
     if (guardian) console.log(`Voice notice for the person at home: ${voice.status().enabled ? `on (${voice.status().lang}, Mac speaker)` : 'off (HOME_MCP_VOICE=on to enable)'}.`);
     if (guardian) console.log(`Ring Chime: ${ringChime.status().enabled ? 'on (sounds before the Mac voice when a Ring token is loaded and a Chime is found; Mac only otherwise)' : 'off (HOME_MCP_CHIME=on to enable)'}.`);
-    if (remoteRelay) console.log(`Remote approval: via ${new URL(process.env.HOME_MCP_RELAY_BASE).host} (relay public key, pin as FamilyRelayMacKeySpki: ${relayKeySpki}).`);
+    if (remoteRelay) console.log(`Remote approval: via ${new URL(process.env.HOME_MCP_RELAY_BASE).host} (relay public key, pin as HubPublicKeySpki: ${relayKeySpki}).`);
     if (remoteRelay) console.log(`Ring webhooks: ${process.env.HOME_MCP_RING_WEBHOOKS === 'on' ? 'pulled from the relay every 10 s (Ring posts to /ring/webhook)' : 'off (HOME_MCP_RING_WEBHOOKS=on to pull them from the relay)'}.`);
     if (doors) console.log(`Ring doorbell: ${ringProviderToken && !ringNetworkOff ? 'watching Ring event history every 10 s for doorbell presses and a person at the door (it asks the admin phone; it never opens the door)' : ringNetworkOff ? 'off (HOME_MCP_RING_PROBE=off)' : 'waiting for a Playground token (paste it in the console: Ring connection)'}; the admin can also ring a simulated doorbell.`);
     { const f = faceHint.status(); console.log(f.enabled ? `Face hint: ON (local OpenCV YuNet + SFace; ${f.people} enrolled with consent; hint only, never opens the door).` : `Face hint: OFF (${f.reason}).`); }

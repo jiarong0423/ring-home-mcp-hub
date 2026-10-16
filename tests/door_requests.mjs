@@ -383,7 +383,7 @@ test('remote approval: admin phone enables, family phone enrols with the one-tim
   const base = `http://127.0.0.1:${cloud.address().port}/staging`;
   const server = await startServer({ NODE_ENV: 'test', HOME_MCP_RELAY_BASE: base, HOME_MCP_RELAY_KEY: keyPath, HOME_MCP_RELAY_STORE: join(dir, 'relay_phones.json') });
   t.after(() => server.stop());
-  assert.match(server.stdout, /Remote approval: via 127\.0\.0\.1:\d+ \(relay public key, pin as FamilyRelayMacKeySpki: [A-Za-z0-9_-]+\)/u);
+  assert.match(server.stdout, /Remote approval: via 127\.0\.0\.1:\d+ \(relay public key, pin as HubPublicKeySpki: [A-Za-z0-9_-]+\)/u);
 
   const admin = await pairPhone(server, server.adminCode, 'Me');
   const desk = (await call(server, '/api/login', { method: 'POST', body: { passcode: server.demoPass } })).body.token;

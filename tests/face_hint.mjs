@@ -123,7 +123,7 @@ test('D14: after deleting a person the same face is no longer matched', async ()
 const facePython = process.env.HOME_MCP_FACE_TEST_PYTHON || resolve(here, '..', '..', 'face_env', 'bin', 'python');
 const faceModels = process.env.HOME_MCP_FACE_TEST_MODELS || resolve(here, '..', '..', 'face_models');
 const det = join(faceModels, 'face_detection_yunet_2023mar.onnx'); const rec = join(faceModels, 'face_recognition_sface_2021dec.onnx');
-const realSkip = [facePython, det, rec].every((p) => existsSync(p)) ? false : 'face venv / models not present (see CANDIDATE_NOTES round 9)';
+const realSkip = [facePython, det, rec].every((p) => existsSync(p)) ? false : 'face venv / models not present (set HOME_MCP_FACE_TEST_PYTHON and HOME_MCP_FACE_TEST_MODELS, same values as HOME_MCP_FACE_PYTHON / HOME_MCP_FACE_MODELS, see README A4)';
 
 test('real worker: OpenCV YuNet+SFace load; grey image -> no face; bad bytes -> IMAGE_INVALID; a killed worker restarts', { skip: realSkip }, async () => {
   const worker = createFaceWorker({ python: facePython, detModel: det, recModel: rec });
