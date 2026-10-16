@@ -57,12 +57,19 @@ async function enrol(code) {
 }
 
 let shown = null;
+// request id -> the decision this phone sent. The relay keeps listing a request until the hub posts its result, so without
+// this the next poll would bring the answered card back for a few seconds.
+const answered = new Map();
+const sentText = (decision) => (decision === 'approve' ? 'Approved. Waiting for the hub to open the door…' : 'Denied. The door stays locked.');
 async function loop() {
   const k = await loadKey();
   if (!k) { say('This phone is not enabled yet. At home, open the hub on your admin phone and choose "Enable remote approval".'); return; }
   try {
     const { request, result } = await call('pending', {}, k);
-    if (request && !result) {
+    if (request && !result && answered.has(request.requestId)) {
+      el('ask').hidden = true;
+      say(sentText(answered.get(request.requestId)));
+    } else if (request && !result) {
       shown = request.requestId;
       el('ask').hidden = false;
       el('ask-title').textContent = request.kind === 'ring' ? `Someone is at the door (${request.label}). Open it?` : `"${request.label}" asks to open the front door.`;
@@ -81,7 +88,8 @@ async function decide(decision) {
   const k = await loadKey();
   if (!k || !shown) return;
   el('approve').disabled = el('deny').disabled = true;
-  try { await call('decide', { requestId: shown, decision }, k); say(decision === 'approve' ? 'Approved. Waiting for the hub to open the door…' : 'Denied. The door stays locked.'); }
+  const requestId = shown;
+  try { await call('decide', { requestId, decision }, k); answered.set(requestId, decision); say(sentText(decision)); }
   catch (error) { say(`Not sent (${error.code || error.message}).`); }
   finally { el('approve').disabled = el('deny').disabled = false; el('ask').hidden = true; }
 }
