@@ -18,7 +18,14 @@ export function createRingChime({ origin = 'https://api.amazonvision.com', getTo
   let devices = null;            // { at, chime: { id, slots } | null, cameras: [{ id, video, motion }] }
   let lastPlayAt = -Infinity;
   let last = { outcome: 'idle', detail: null };
-  const note = (outcome, detail = null) => { last = { outcome, detail }; return { played: outcome === 'played', outcome, detail }; };
+  const note = (outcome, detail = null) => {
+    // every outcome that involved Ring is logged once per change, so a skipped Chime is never silent
+    if (!['off', 'no_token', 'too_soon'].includes(outcome) && (outcome !== last.outcome || detail !== last.detail)) {
+      log(`${outcome === 'error' ? 'ERROR ' : ''}ring chime: ${outcome}${detail ? ` (${detail})` : ''}`);
+    }
+    last = { outcome, detail };
+    return { played: outcome === 'played', outcome, detail };
+  };
 
   async function api(path, token, init = {}) {
     const r = await fetchImpl(origin + path, { ...init, headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.api+json, application/json',
