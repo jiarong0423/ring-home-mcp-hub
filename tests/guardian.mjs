@@ -183,3 +183,19 @@ test('Ring token expiry is never silent: the switch back to simulation emails th
   assert.equal(mails.length, 1, JSON.stringify(s.emails.map((m) => m.subject)));
   assert.match(mails[0].message, /token_expired/u); assert.match(mails[0].message, /SIMULATED/u);
 });
+
+test('Ring device_offline / device_online webhooks move the camera at once: one offline email, one recovered email; no token does not undo them', async () => {
+  const s = setup({ start: at(14, 0), ringStatus: async () => ({ state: 'token_missing' }) });
+  s.advanceTo(at(14, 1));
+  assert.deepEqual(s.g.noteRingDevice({ online: false }), { ok: true, state: 'offline' });
+  await s.g.probeRingNow();                                   // no Playground token: must not switch back to simulation
+  s.advanceTo(at(14, 30));
+  assert.equal(s.g.status().camera.state, 'offline');
+  assert.equal(s.kinds().filter((k) => k === 'offline:camera').length, 1);
+  assert.equal(s.emails.filter((e) => /Ring camera offline/u.test(e.subject)).length, 1);
+  assert.deepEqual(s.g.noteRingDevice({ online: true }), { ok: true, state: 'online' });
+  s.advanceTo(at(15, 30));                                    // no status polling to age a webhook-reported camera
+  assert.equal(s.g.status().camera.state, 'online');
+  assert.equal(s.emails.filter((e) => /Ring camera back online/u.test(e.subject)).length, 1);
+  assert.deepEqual(s.g.noteRingDevice({ online: 'yes' }), { ok: false, code: 'INVALID_ARGUMENT' });
+});

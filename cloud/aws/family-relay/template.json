@@ -8,7 +8,14 @@
       "AllowedPattern": "^[A-Za-z0-9_-]{40,120}$"
     },
     "CodeBucket": { "Type": "String", "AllowedPattern": "^[a-z0-9][a-z0-9.-]{2,62}$" },
-    "CodeKey": { "Type": "String", "AllowedPattern": "^family-relay/[a-f0-9]{64}/family-relay\\.zip$" }
+    "CodeKey": { "Type": "String", "AllowedPattern": "^family-relay/[a-f0-9]{64}/family-relay\\.zip$" },
+    "RingWebhookHmacKey": {
+      "Type": "String",
+      "NoEcho": true,
+      "Default": "",
+      "Description": "Optional. The HMAC signing key issued with your Ring partner credentials. Empty = POST /ring/webhook answers 503 and nothing is accepted.",
+      "AllowedPattern": "^$|^[\\x21-\\x7e]{16,256}$"
+    }
   },
   "Resources": {
     "RelayTable": {
@@ -50,7 +57,7 @@
         "Timeout": 10,
         "Role": { "Fn::GetAtt": ["RelayRole", "Arn"] },
         "Code": { "S3Bucket": { "Ref": "CodeBucket" }, "S3Key": { "Ref": "CodeKey" } },
-        "Environment": { "Variables": { "RELAY_TABLE": { "Ref": "RelayTable" }, "RELAY_MAC_KEY_SPKI": { "Ref": "HubPublicKeySpki" } } }
+        "Environment": { "Variables": { "RELAY_TABLE": { "Ref": "RelayTable" }, "RELAY_MAC_KEY_SPKI": { "Ref": "HubPublicKeySpki" }, "RING_WEBHOOK_HMAC_KEY": { "Ref": "RingWebhookHmacKey" } } }
       }
     },
     "RelayUrl": {

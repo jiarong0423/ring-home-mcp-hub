@@ -1,9 +1,11 @@
-// HTTP edge for the family relay on the existing Lambda: POST /relay/mac, POST /relay/phone, GET /family, GET /family/app.js.
+// HTTP edge for the family relay on the existing Lambda: POST /relay/mac, POST /relay/phone, GET /family, GET /family/app.js,
+// and (stand-alone relay only) POST /ring/webhook.
 // Storage is the existing event table (GetItem / PutItem only, deterministic keys, TTL attribute expires_at).
 import { createFamilyRelay, RelayError } from './family-relay.mjs';
 import { FAMILY_PAGE_HTML, FAMILY_PAGE_JS } from './family-page.mjs';   // generated from family-page/ (no file reads at run time)
 
 const MAX_BODY = 8_192;
+const MAX_WEBHOOK_BODY = 16_384;
 const BASE_HEADERS = Object.freeze({ 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY' });
 
 export function createDynamoRelayStore({ getItem, putItem, tableName, clock = Date.now }) {
@@ -48,6 +50,11 @@ export function createFamilyRelayHttp({ relay }) {
           'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }, body: pageFiles().html };
       }
       if (route === 'family-js') return { statusCode: 200, headers: { ...BASE_HEADERS, 'content-type': 'text/javascript; charset=utf-8' }, body: pageFiles().js };
+      if (route === 'ring-webhook') {   // raw bytes: the HMAC covers exactly what Ring sent
+        const raw = Buffer.from(event.body ?? '', event.isBase64Encoded ? 'base64' : 'utf8');
+        if (raw.length > MAX_WEBHOOK_BODY) throw new RelayError(413, 'RELAY_BODY_TOO_LARGE');
+        return respond(200, await relay.ringWebhook({ rawBody: raw, signature: event.headers?.['x-signature'] }));
+      }
       const body = parseBody(event);
       const out = route === 'relay-mac' ? await relay.mac(body) : await relay.phone(body);
       return respond(200, out);

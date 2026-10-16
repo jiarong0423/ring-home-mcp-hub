@@ -113,6 +113,7 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
   function cameraVerdict(now) {
     const c = targets.camera;
     if (c.failures >= timing.cameraFailures) return 'offline';
+    if (c.ring === 'webhook') return 'online';   // Ring itself reports offline / online; no status polling to age
     // Real Ring checks run on the real clock, so their age is judged on the real clock (a fast demo clock must not age them).
     const age = c.source === 'ring' && c.lastRealOk ? realClock() - c.lastRealOk : now - c.lastHeartbeatMs;
     if (c.failures >= 1 || age >= timing.cameraIntervalMs * 1.5) return 'late';
@@ -135,6 +136,7 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
     ringInFlight = true; c.nextCheckReal = realClock() + timing.cameraIntervalMs;
     try {
       const r = await ringStatus();
+      if (r.state === 'token_missing' && c.ring === 'webhook') return;   // webhook-driven state stays until a token allows polling
       if (r.state === 'token_missing' || r.state === 'token_expired') {
         // the real Ring link ended (30-minute Playground token): the family is told, never a silent switch to simulation
         if (c.source === 'ring') emit('ring_token', 'warn', 'camera', { reason: r.state }, { email: true });
@@ -216,6 +218,17 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
     if (online === true) { const now = clock(); g.lastHeartbeatMs = now; g.nextBeatMs = now + timing.gatewayIntervalMs; g.wasUp = true; }
     else g.wasUp = false;
   }
+  // Ring's own device_offline / device_online webhook (pulled from the relay): the camera's state changes now, not at the next
+  // 5-minute status check. Offline still goes through transition(), so the family gets the same single email.
+  function noteRingDevice({ online }) {
+    if (typeof online !== 'boolean') return { ok: false, code: 'INVALID_ARGUMENT' };
+    const c = targets.camera;
+    if (c.source !== 'ring') { c.source = 'ring'; c.ring = 'webhook'; }
+    if (online) { c.failures = 0; c.lastHeartbeatMs = clock(); c.lastRealOk = realClock(); }
+    else c.failures = Math.max(c.failures, timing.cameraFailures);
+    transition('camera', online ? 'online' : 'offline');
+    return { ok: true, state: c.state };
+  }
   function setSimulatedCamera({ online }) {
     if (typeof online !== 'boolean') return { ok: false, code: 'INVALID_ARGUMENT' };
     targets.camera.simulatedOnline = online;
@@ -255,5 +268,5 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
   }
   // A new Ring token was just handed over: check the real camera now instead of waiting for the next 5-minute slot.
   function probeRingNow() { targets.camera.nextCheckReal = 0; return probeRing(); }
-  return Object.freeze({ tick, status, retry, setSimulatedCamera, noteGateway, probeRing, probeRingNow, noteDoor, noteDoorbellAgain });
+  return Object.freeze({ tick, status, retry, setSimulatedCamera, noteGateway, noteRingDevice, probeRing, probeRingNow, noteDoor, noteDoorbellAgain });
 }

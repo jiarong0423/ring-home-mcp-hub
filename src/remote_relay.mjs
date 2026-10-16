@@ -25,7 +25,7 @@ export function loadOrCreateRelayKey(path) {
 }
 export const relayPublicKeySpki = (privateKey) => createPublicKey(privateKey).export({ format: 'der', type: 'spki' }).toString('base64url');
 
-export function createRemoteRelay({ base, privateKey, storePath, fetchImpl = fetch, clock = Date.now, onDecision = () => {}, log = () => {},
+export function createRemoteRelay({ base, privateKey, storePath, fetchImpl = fetch, clock = Date.now, onDecision = () => {}, onRingEvent = () => {}, log = () => {},
   sleep = (ms) => new Promise((r) => { const t = setTimeout(r, ms); t.unref?.(); }) }) {
   const url = new URL(base);
   if (url.protocol !== 'https:' && !(url.hostname === '127.0.0.1' && process.env.NODE_ENV === 'test')) throw new Error('relay base must be https');
@@ -34,6 +34,7 @@ export function createRemoteRelay({ base, privateKey, storePath, fetchImpl = fet
   let pendingCode = null;           // { code, codeSha256, deviceId, expiresAtMs }
   let current = null;               // { requestId, expiresAtMs }
   let lastError = null;
+  let ringCursor = null;            // last Ring webhook event handed to the hub (null until the first pull)
   const persist = () => {
     mkdirSync(dirname(storePath), { recursive: true, mode: 0o700 });
     const tmp = `${storePath}.${process.pid}.tmp`;
@@ -106,8 +107,19 @@ export function createRemoteRelay({ base, privateKey, storePath, fetchImpl = fet
     return { waiting: true };
   }
 
+  // Ring webhooks reach the relay (public HTTPS); the hub pulls them over its signed channel. The first pull only notes
+  // where the queue is, so events from before the hub started never open anything.
+  async function pullRingEvents() {
+    const out = await call('ringEvents', { after: ringCursor ?? 0 });
+    if (ringCursor === null) { ringCursor = out.head; return { baseline: true, head: out.head }; }
+    if (out.reset) ringCursor = 0;
+    for (const e of out.events ?? []) { ringCursor = Math.max(ringCursor, e.seq); onRingEvent(e); }
+    if (!(out.events ?? []).length && out.head > ringCursor) ringCursor = out.head;   // the missing ones expired
+    return { fired: (out.events ?? []).length, head: out.head };
+  }
+
   return Object.freeze({
-    enable, tick,
+    enable, tick, pullRingEvents,
     async publishRequest(r) { current = { requestId: r.requestId, expiresAtMs: r.expiresAtMs }; await callRetry('request', { request: r }); },
     async publishResult(r) { if (current?.requestId === r.requestId) current = null; await callRetry('result', r); },
     async revoke(keyId) { phones = phones.filter((p) => p.keyId !== keyId); persist(); await call('revoke', { phoneKeyId: keyId }); },

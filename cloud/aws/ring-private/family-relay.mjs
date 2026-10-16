@@ -6,7 +6,7 @@
 //    again itself before opening anything. The cloud holds no private key, so it cannot approve on anyone's behalf.
 // Only a short text summary of a pending door request goes up; never a photo, a face hint or a Ring token.
 // Storage is injected (getItem / putItem / updateItem style ports over the existing event table, deterministic keys).
-import { createHash, createPublicKey, verify as cryptoVerify } from 'node:crypto';
+import { createHash, createHmac, createPublicKey, timingSafeEqual, verify as cryptoVerify } from 'node:crypto';
 
 export class RelayError extends Error { constructor(status, code) { super(code); this.status = status; this.code = code; } }
 const deny = (status, code) => { throw new RelayError(status, code); };
@@ -67,11 +67,32 @@ export function verifyMacEnvelope(envelope, publicKeySpki, { now }) {
   return c;
 }
 
+// ---- Ring webhooks (API reference, Notifications): X-Signature: sha256=<hex HMAC-SHA256 of the raw body> ----
+// The relay is the public HTTPS endpoint a home hub behind NAT cannot offer. It checks the signature, drops repeats by
+// meta.request_id, keeps only { type, subType, deviceId, at } (never thumbnails or account ids) and lets the hub pull them
+// over its signed channel. Ring retries 5xx and timeouts, never 4xx, so storage trouble answers 503 and bad input 4xx.
+export const RING_EVENT_TYPES = Object.freeze(['button_press', 'motion_detected', 'person_detected', 'device_online', 'device_offline']);
+export function ringSignatureOk(rawBody, header, key) {
+  if (typeof header !== 'string' || !/^sha256=[a-f0-9]{64}$/u.test(header) || typeof key !== 'string' || key.length < 16) return false;
+  const want = createHmac('sha256', key).update(rawBody).digest();
+  const got = Buffer.from(header.slice(7), 'hex');
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+const RING_ID = /^[A-Za-z0-9._:-]{1,128}$/u;
+function ringEventOf(body, now) {
+  const rid = body?.meta?.request_id; const type = body?.data?.type; const a = body?.data?.attributes ?? {};
+  if (typeof rid !== 'string' || rid.length < 1 || rid.length > 128 || typeof type !== 'string' || type.length > 64) deny(400, 'RING_WEBHOOK_INVALID');
+  const at = typeof a.timestamp === 'number' ? a.timestamp : Date.parse(a.timestamp ?? body?.meta?.time ?? '');
+  return { rid, event: { type, subType: typeof a.sub_type === 'string' && /^[a-z_.]{1,32}$/u.test(a.sub_type) ? a.sub_type : null,
+    deviceId: typeof a.source === 'string' && RING_ID.test(a.source) ? a.source : null, at: Number.isFinite(at) ? at : now } };
+}
+
 // ---- the relay itself ----
-const TTL = Object.freeze({ code: 10 * 60_000, registration: 10 * 60_000, request: 3 * 60_000, decision: 3 * 60_000, result: 10 * 60_000, nonce: 2 * 60_000 });
+const TTL = Object.freeze({ code: 10 * 60_000, registration: 10 * 60_000, request: 3 * 60_000, decision: 3 * 60_000, result: 10 * 60_000, nonce: 2 * 60_000,
+  ringEvent: 24 * 3_600_000 });
 const LABEL = /^[\p{L}\p{N} ().,:'\-]{1,60}$/u;
 
-export function createFamilyRelay({ store, macPublicKeySpki, clock = Date.now }) {
+export function createFamilyRelay({ store, macPublicKeySpki, ringWebhookKey = null, clock = Date.now }) {
   if (!store || typeof store.get !== 'function' || typeof store.put !== 'function') throw new TypeError('relay store required');
   if (typeof macPublicKeySpki !== 'string' || !B64U.test(macPublicKeySpki)) throw new TypeError('relay mac key required');
   const expiry = (ms) => clock() + ms;
@@ -127,8 +148,40 @@ export function createFamilyRelay({ store, macPublicKeySpki, clock = Date.now })
         if (typeof p.requestId === 'string') { const d = live(await store.get(`relay:decision:${p.requestId}`)); if (d) out.decision = d.envelope; }
         return out;
       }
+      case 'ringEvents': {   // Ring webhook events queued for the hub, oldest first, at most 20 per call
+        if (!Number.isSafeInteger(p.after) || p.after < 0) deny(400, 'RELAY_ARGUMENT');
+        const head = (await store.get('relay:ringevt:head'))?.seq ?? 0;
+        const after = p.after > head ? 0 : p.after;   // the head row expired and numbering restarted
+        const events = [];
+        for (let n = after + 1; n <= Math.min(head, after + 20); n += 1) {
+          const row = live(await store.get(`relay:ringevt:${n}`));
+          if (row) events.push({ seq: n, ...row.event });
+        }
+        return { ok: true, head, reset: p.after > head, events };
+      }
       default: deny(400, 'RELAY_OP_UNKNOWN');
     }
+  }
+
+  // Ring -> relay. rawBody is the exact bytes received (the signature covers them, not re-serialized JSON).
+  async function ringWebhook({ rawBody, signature }) {
+    if (!ringWebhookKey) deny(503, 'RING_WEBHOOK_NOT_CONFIGURED');
+    if (!ringSignatureOk(rawBody, signature, ringWebhookKey)) deny(401, 'RING_SIGNATURE_INVALID');
+    let body;
+    try { body = JSON.parse(Buffer.from(rawBody).toString('utf8')); } catch { deny(400, 'RING_WEBHOOK_INVALID'); }
+    const { rid, event } = ringEventOf(body, clock());
+    const seenPk = `relay:ringreq:${sha(rid)}`;
+    if (live(await store.get(seenPk))) return { ok: true, duplicate: true };
+    if (!RING_EVENT_TYPES.includes(event.type)) return { ok: true, ignored: true };   // 2xx: Ring must not retry or disable us
+    const head = (await store.get('relay:ringevt:head'))?.seq ?? 0;
+    for (let n = head + 1; n <= head + 50; n += 1) {    // claim the next free slot (two deliveries at once take different ones)
+      if (await store.put({ pk: `relay:ringevt:${n}`, event, expiresAtMs: expiry(TTL.ringEvent) }, { ifNotExists: true })) {
+        await store.put({ pk: 'relay:ringevt:head', seq: n });
+        await store.put({ pk: seenPk, expiresAtMs: expiry(TTL.ringEvent) });   // after queuing: a retry after a failure is not lost
+        return { ok: true, seq: n };
+      }
+    }
+    deny(503, 'RING_QUEUE_BUSY');
   }
 
   async function phone(envelope) {
@@ -168,7 +221,7 @@ export function createFamilyRelay({ store, macPublicKeySpki, clock = Date.now })
     deny(400, 'RELAY_OP_UNKNOWN');
   }
 
-  return Object.freeze({ mac, phone });
+  return Object.freeze({ mac, phone, ringWebhook });
 }
 
 // In-memory store for tests and the offline demo (same semantics as the DynamoDB port).

@@ -114,3 +114,65 @@ test('family page: an answered request is never shown as pending again; "waiting
   assert.equal(node('ask').hidden, true);
   assert.match(status(), /^Denied\./u);
 });
+
+// ---- Ring webhooks (API reference, Notifications): X-Signature = "sha256=" + hex HMAC-SHA256 of the raw body ----
+const { createHmac } = await import('node:crypto');
+const RING_KEY = 'test-ring-hmac-key-0123456789';
+// Shaped like the documented examples: meta { version, time, request_id, account_id }, data { id, type, attributes { source, source_type, timestamp } }
+function ringPayload(type, { rid = randomBytes(8).toString('hex'), device = 'dev123', ts = Date.now(), subType } = {}) {
+  return JSON.stringify({ meta: { version: '1.1', time: new Date(ts).toISOString(), request_id: rid, account_id: 'acct-should-not-be-kept' },
+    data: { id: `${device}_${subType ?? type}_${ts}`, type, attributes: { source: device, source_type: 'devices', timestamp: ts, ...(subType ? { sub_type: subType } : {}),
+      thumbnail_url: 'https://example.invalid/should-not-be-kept.jpg' }, relationships: { devices: { links: { self: `/v1/devices/${device}` } } } } });
+}
+const ringSig = (raw, key = RING_KEY) => `sha256=${createHmac('sha256', key).update(raw).digest('hex')}`;
+const hook = (raw, sig = ringSig(raw), b64 = false) => ({ body: b64 ? Buffer.from(raw).toString('base64') : raw, isBase64Encoded: b64, headers: sig === null ? {} : { 'x-signature': sig } });
+
+test('Ring webhook: 503 until a key is configured; a bad or missing signature is 401; only a valid one is queued', async () => {
+  const off = createFamilyRelayHttp({ relay: createFamilyRelay({ store: createMemoryRelayStore(), macPublicKeySpki: spki }) });
+  assert.equal((await off('ring-webhook', hook(ringPayload('button_press')))).statusCode, 503);
+  const store = createMemoryRelayStore();
+  const http = createFamilyRelayHttp({ relay: createFamilyRelay({ store, macPublicKeySpki: spki, ringWebhookKey: RING_KEY }) });
+  const raw = ringPayload('button_press');
+  assert.equal((await http('ring-webhook', hook(raw, ringSig(raw, 'another-key-0123456789')))).statusCode, 401);
+  assert.equal((await http('ring-webhook', hook(raw, null))).statusCode, 401);   // no X-Signature header at all
+  assert.equal((await http('ring-webhook', hook(raw, ringSig(raw).replace('sha256=', 'sha1=')))).statusCode, 401);
+  // the signature covers the exact bytes: re-serialised JSON with the same content does not pass
+  assert.equal((await http('ring-webhook', hook(JSON.stringify(JSON.parse(raw), null, 1), ringSig(raw)))).statusCode, 401);
+  const okRes = await http('ring-webhook', hook(raw, ringSig(raw), true));   // function URLs may base64 the body
+  assert.equal(okRes.statusCode, 200, okRes.body); assert.equal(JSON.parse(okRes.body).seq, 1);
+  assert.equal((await http('ring-webhook', hook('{"x":"' + 'y'.repeat(17_000) + '"}'))).statusCode, 413);
+  assert.equal((await http('ring-webhook', hook('{not json'))).statusCode, 400);
+});
+
+test('Ring webhook: repeats of a request_id are acknowledged once; unknown types are 200 but not queued; only minimal fields are kept', async () => {
+  const store = createMemoryRelayStore();
+  const relay = createFamilyRelay({ store, macPublicKeySpki: spki, ringWebhookKey: RING_KEY });
+  const raw = ringPayload('motion_detected', { rid: 'req-1', subType: 'human', ts: 1_800_000_000_000 });
+  assert.deepEqual(await relay.ringWebhook({ rawBody: Buffer.from(raw), signature: ringSig(raw) }), { ok: true, seq: 1 });
+  assert.deepEqual(await relay.ringWebhook({ rawBody: Buffer.from(raw), signature: ringSig(raw) }), { ok: true, duplicate: true });
+  const other = ringPayload('subscription_activated');
+  assert.deepEqual(await relay.ringWebhook({ rawBody: Buffer.from(other), signature: ringSig(other) }), { ok: true, ignored: true });
+  const row = await store.get('relay:ringevt:1');
+  assert.deepEqual(row.event, { type: 'motion_detected', subType: 'human', deviceId: 'dev123', at: 1_800_000_000_000 });
+  assert.ok(!JSON.stringify(row).includes('acct-should-not-be-kept') && !JSON.stringify(row).includes('thumbnail'));
+  assert.equal(await store.get('relay:ringevt:2'), null);
+});
+
+test('Ring webhook: the hub pulls queued events over its signed channel, oldest first, 20 at a time; a restarted queue resets the cursor', async () => {
+  const store = createMemoryRelayStore();
+  const relay = createFamilyRelay({ store, macPublicKeySpki: spki, ringWebhookKey: RING_KEY });
+  const types = ['button_press', 'device_offline', 'device_online'];
+  for (let i = 0; i < 23; i += 1) { const raw = ringPayload(types[i % 3], { ts: 1_800_000_000_000 + i }); await relay.ringWebhook({ rawBody: Buffer.from(raw), signature: ringSig(raw) }); }
+  const pull = (after) => relay.mac(JSON.parse(macBody('ringEvents', { after })));
+  const first = await pull(0);
+  assert.equal(first.head, 23); assert.equal(first.events.length, 20); assert.deepEqual(first.events.map((e) => e.seq).slice(0, 3), [1, 2, 3]);
+  assert.equal(first.events[1].type, 'device_offline');
+  const rest = await pull(20);
+  assert.deepEqual(rest.events.map((e) => e.seq), [21, 22, 23]);
+  assert.deepEqual((await pull(23)).events, []);
+  const reset = await pull(99);
+  assert.equal(reset.reset, true); assert.equal(reset.events[0].seq, 1);
+  await assert.rejects(relay.mac(JSON.parse(macBody('ringEvents', { after: -1 }))), { code: 'RELAY_ARGUMENT' });
+  // the phone side cannot read the queue (it has no hub signature)
+  await assert.rejects(relay.mac({ claims: {}, signature: 'x', payload: { after: 0 } }), { code: 'MAC_ENVELOPE_INVALID' });
+});

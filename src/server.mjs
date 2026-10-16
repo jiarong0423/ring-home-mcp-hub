@@ -311,6 +311,17 @@ function doorbellPressed({ simulated, at, kind = 'ding' }) {
     return null;
   }
 }
+// Ring webhook events pulled from the relay (HOME_MCP_RING_WEBHOOKS=on; Ring posts them to the relay's public /ring/webhook).
+// A press or a person becomes a door request only while fresh (2 min); device_offline / device_online move the camera state at once.
+function onRingWebhookEvent(e) {
+  const type = String(e?.type ?? '');
+  console.log(`ring webhook: ${type.replace(/[^a-z_]/gu, '?').slice(0, 32)}${e?.subType ? ` (${String(e.subType).replace(/[^a-z_.]/gu, '?').slice(0, 32)})` : ''}`);
+  if (type === 'device_offline' || type === 'device_online') { guardian?.noteRingDevice({ online: type === 'device_online' }); return; }
+  const person = type === 'person_detected' || (type === 'motion_detected' && e.subType === 'human');
+  if (type !== 'button_press' && !person) return;
+  if (!Number.isFinite(e.at) || Math.abs(Date.now() - e.at) > 120_000) { console.log('ring webhook: event older than 2 minutes, not turned into a door request'); return; }
+  doorbellPressed({ simulated: false, at: e.at, kind: person ? 'person' : 'ding' });
+}
 // Ring live view on the admin phone's approval banner (WHEP): only while a door request waits; closed when it ends.
 const ringLive = createRingLive({ origin: RING_API_ORIGIN, getToken: () => (ringNetworkOff ? null : ringProviderToken),
   log: (line) => (line.startsWith('ERROR') ? console.error(line) : console.log(line)) });
@@ -377,6 +388,7 @@ if (directEntry && demoMcpEnabled && process.env.HOME_MCP_RELAY_BASE) {
     remoteRelay = createRemoteRelay({ base: process.env.HOME_MCP_RELAY_BASE, privateKey: relayKey,
       storePath: process.env.HOME_MCP_RELAY_STORE || join(process.env.HOME || homedir(), '.home-mcp-console', 'relay_phones.json'),
       log: (line) => (line.startsWith('ERROR') ? console.error(line) : console.log(line)),
+      onRingEvent: (e) => onRingWebhookEvent(e),
       onDecision: ({ requestId, decision, approver }) => {
         try { doors?.decide({ requestId, decision, approver, execute: performApprovedUnlock }); }
         catch (error) { console.error(`ERROR remote decision not applied: ${error.code ?? 'ERROR'}`); }
@@ -2084,6 +2096,14 @@ if (directEntry) {
     finally { relayBusy = false; }
   }, 3000) : null;
   relayTick?.unref();
+  // Ring webhooks: pull what Ring delivered to the relay every 10 s (opt-in; each pull is one signed call).
+  let ringHookBusy = false;
+  const ringHookTick = remoteRelay && listenEnabled && process.env.HOME_MCP_RING_WEBHOOKS === 'on' ? setInterval(async () => {
+    if (ringHookBusy) return; ringHookBusy = true;
+    try { await remoteRelay.pullRingEvents(); } catch (error) { console.error(`ERROR ring webhook pull: ${error.code ?? 'unreachable'}`); }
+    finally { ringHookBusy = false; }
+  }, 10_000) : null;
+  ringHookTick?.unref();
   const guardianTick = guardian && listenEnabled ? setInterval(() => {
     try { guardian.tick(); doors?.sweep(); maybeDailySummary(); } catch { console.error('ERROR guardian_tick'); }
   }, Math.max(20, Math.min(500, Math.floor(30_000 / guardianClock.speed)))) : null;
@@ -2106,6 +2126,7 @@ if (directEntry) {
     if (guardian) console.log(`Care summary: daily at ${SUMMARY_AT} (guardian clock), ${careSummary.status().bedrock === 'configured' ? `Bedrock ${careSummary.status().modelId}` : 'template only (HOME_MCP_BEDROCK_MODEL not set)'}.`);
     if (guardian) console.log(`Voice notice for the person at home: ${voice.status().enabled ? `on (${voice.status().lang}, Mac speaker)` : 'off (HOME_MCP_VOICE=on to enable)'}.`);
     if (remoteRelay) console.log(`Remote approval: via ${new URL(process.env.HOME_MCP_RELAY_BASE).host} (relay public key, pin as FamilyRelayMacKeySpki: ${relayKeySpki}).`);
+    if (remoteRelay) console.log(`Ring webhooks: ${process.env.HOME_MCP_RING_WEBHOOKS === 'on' ? 'pulled from the relay every 10 s (Ring posts to /ring/webhook)' : 'off (HOME_MCP_RING_WEBHOOKS=on to pull them from the relay)'}.`);
     if (doors) console.log(`Ring doorbell: ${ringProviderToken && !ringNetworkOff ? 'watching Ring event history every 10 s for doorbell presses and a person at the door (it asks the admin phone; it never opens the door)' : ringNetworkOff ? 'off (HOME_MCP_RING_PROBE=off)' : 'waiting for a Playground token (paste it in the console: Ring connection)'}; the admin can also ring a simulated doorbell.`);
     { const f = faceHint.status(); console.log(f.enabled ? `Face hint: ON (local OpenCV YuNet + SFace; ${f.people} enrolled with consent; hint only, never opens the door).` : `Face hint: OFF (${f.reason}).`); }
     if (guardian) console.log(`Guardian: ON (gateway heartbeat 60 s, camera check 5 min, daily routine 8 items; clock x${guardianClock.speed}${guardianClock.start ? ' from ' + guardianClock.start : ''}). Ring camera: ${ringProviderToken ? 'Playground token loaded (real status checks)' : 'simulated (no token)'}. Email alerts: ${notifier.status().email}.`);

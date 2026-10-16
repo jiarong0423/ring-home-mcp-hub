@@ -132,3 +132,30 @@ test('publishing a request is retried on 5xx / network errors (fresh signature e
   await assert.rejects(bad.publishResult({ requestId: 'x'.repeat(22), status: 'approved', receiptId: null }), { code: 'RELAY_ARGUMENT' });
   assert.equal(tries, 1, 'a 4xx is not retried');
 });
+
+test('Ring webhooks: the first pull only notes the queue position; later events reach the hub once, in order; a restarted hub never replays old ones', async () => {
+  const { createHmac } = await import('node:crypto');
+  const key = 'test-ring-hmac-key-0123456789';
+  const dir = mkdtempSync(join(tmpdir(), 'relay-ring-'));
+  const hubKey = loadOrCreateRelayKey(join(dir, 'relay.key'));
+  const relay = createFamilyRelay({ store: createMemoryRelayStore(), macPublicKeySpki: relayPublicKeySpki(hubKey), ringWebhookKey: key });
+  const deliver = (type, extra = {}) => {
+    const raw = JSON.stringify({ meta: { version: '1.1', time: new Date().toISOString(), request_id: randomBytes(8).toString('hex') },
+      data: { id: `dev_${type}`, type, attributes: { source: 'dev', source_type: 'devices', timestamp: Date.now(), ...extra } } });
+    return relay.ringWebhook({ rawBody: Buffer.from(raw), signature: `sha256=${createHmac('sha256', key).update(raw).digest('hex')}` });
+  };
+  const seen = [];
+  const make = () => createRemoteRelay({ base: 'https://relay.example', privateKey: hubKey, storePath: join(dir, 'phones.json'), fetchImpl: fakeFetch(relay), onRingEvent: (e) => seen.push(e) });
+  await deliver('button_press');                       // before the hub started: never fired
+  const hub = make();
+  assert.deepEqual(await hub.pullRingEvents(), { baseline: true, head: 1 });
+  await deliver('motion_detected', { sub_type: 'human' }); await deliver('device_offline');
+  assert.equal((await hub.pullRingEvents()).fired, 2);
+  assert.deepEqual(seen.map((e) => [e.seq, e.type, e.subType]), [[2, 'motion_detected', 'human'], [3, 'device_offline', null]]);
+  assert.equal((await hub.pullRingEvents()).fired, 0);  // nothing twice
+  const restarted = make();                             // a new hub process starts from the current head again
+  assert.deepEqual(await restarted.pullRingEvents(), { baseline: true, head: 3 });
+  await deliver('device_online');
+  await restarted.pullRingEvents();
+  assert.deepEqual(seen.map((e) => e.type), ['motion_detected', 'device_offline', 'device_online']);
+});
