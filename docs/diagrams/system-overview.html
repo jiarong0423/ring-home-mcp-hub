@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home MCP Guardian: what runs where</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* Skin: the demo video's palette, darkened until every text role clears 4.5:1 on paper.
+       home = green (focal), Ring = blue, AWS = orange, simulated = grey. */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #f7f6f3;
+      --color-ink:    #0f1720;
+      --color-muted:  #4a5d70;
+      --color-accent: #0b7a5a;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Instrument Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1320px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2.5rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1280px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture · Home MCP Guardian</p>
+    <h1>What runs where: the AI asks, a family phone decides</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="system-overview-title system-overview-desc">
+        <title id="system-overview-title">Home MCP Guardian: what runs where</title>
+        <desc id="system-overview-desc">A home hub on the Mac takes door requests from an AI agent and approvals from family phones, drives simulated home devices, calls the Ring API, and uses two AWS stacks: a signed relay that also receives Ring webhooks, and SNS, CloudWatch and Bedrock for alerts and the daily care note.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4a5d70"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#0b7a5a"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#0a62a0"/></marker>
+          <marker id="arrow-aws" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#a65400"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f7f6f3"/>
+
+        <!-- ===== Zones ===== -->
+        <rect x="280" y="88" width="400" height="384" rx="8" fill="rgba(11,122,90,0.04)" stroke="rgba(11,122,90,0.40)" stroke-width="1"/>
+        <rect x="292" y="80" width="200" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="300" y="92" fill="#0b7a5a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">HOME · MAC, 127.0.0.1 ONLY</text>
+
+        <rect x="760" y="24" width="480" height="144" rx="8" fill="rgba(10,98,160,0.04)" stroke="rgba(10,98,160,0.40)" stroke-width="1"/>
+        <rect x="772" y="16" width="144" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="780" y="28" fill="#0a62a0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">RING · PLAYGROUND</text>
+
+        <rect x="760" y="188" width="480" height="364" rx="8" fill="rgba(166,84,0,0.04)" stroke="rgba(166,84,0,0.40)" stroke-width="1"/>
+        <rect x="772" y="180" width="252" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="780" y="192" fill="#a65400" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">AWS · TWO CLOUDFORMATION STACKS</text>
+
+        <!-- ===== Arrows (before nodes) ===== -->
+        <!-- AI agent -> hub: a request only -->
+        <line x1="240" y1="200" x2="318" y2="200" stroke="#4a5d70" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="244" y="172" width="72" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="280" y="184" fill="#55687a" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">ASK ONLY</text>
+
+        <!-- hub -> Ring API -->
+        <path d="M600,120 V104 Q600,96 608,96 H798" fill="none" stroke="#0a62a0" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <rect x="652" y="68" width="104" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="704" y="80" fill="#0a62a0" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">BEARER TOKEN</text>
+
+        <!-- Ring -> relay: partner webhooks (needs partner credentials) -->
+        <line x1="1000" y1="144" x2="1000" y2="218" stroke="#0a62a0" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-link)"/>
+        <rect x="1008" y="172" width="120" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="1068" y="184" fill="#0a62a0" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">WEBHOOK · HMAC</text>
+
+        <!-- hub -> relay: signed messages, pulls Ring events -->
+        <line x1="640" y1="264" x2="798" y2="264" stroke="#a65400" stroke-width="1.2" marker-end="url(#arrow-aws)"/>
+        <rect x="672" y="236" width="96" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="720" y="248" fill="#a65400" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">SIGNED PULL</text>
+
+        <!-- hub -> simulated devices -->
+        <line x1="400" y1="280" x2="400" y2="358" stroke="#4a5d70" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="408" y="308" width="72" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="444" y="320" fill="#55687a" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">COMMANDS</text>
+
+        <!-- hub -> alerts and care note -->
+        <path d="M600,280 V480 Q600,488 608,488 H798" fill="none" stroke="#a65400" stroke-width="1.2" marker-end="url(#arrow-aws)"/>
+        <rect x="648" y="460" width="112" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="704" y="472" fill="#a65400" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">ALERTS · NOTE</text>
+
+        <!-- family phones -> hub: the approval (headline path) -->
+        <line x1="520" y1="584" x2="520" y2="282" stroke="#0b7a5a" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+        <rect x="528" y="512" width="64" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="560" y="524" fill="#0b7a5a" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">APPROVE</text>
+
+        <!-- alerts -> family phones: email -->
+        <line x1="920" y1="532" x2="920" y2="582" stroke="#a65400" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-aws)"/>
+        <rect x="928" y="548" width="48" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="952" y="560" fill="#a65400" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">EMAIL</text>
+
+        <!-- enabled phone away from home -> relay -->
+        <line x1="1120" y1="584" x2="1120" y2="310" stroke="#0b7a5a" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-accent)"/>
+        <rect x="1128" y="532" width="104" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="1180" y="544" fill="#0b7a5a" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">P-256 ANSWER</text>
+
+        <!-- ===== Nodes ===== -->
+        <!-- AI agent (input) -->
+        <rect x="40" y="160" width="200" height="80" rx="6" fill="#f7f6f3"/>
+        <rect x="40" y="160" width="200" height="80" rx="6" fill="rgba(74,93,112,0.10)" stroke="#55687a" stroke-width="1"/>
+        <rect x="48" y="168" width="32" height="14" rx="2" fill="transparent" stroke="rgba(85,104,122,0.50)" stroke-width="0.8"/>
+        <text x="64" y="178" fill="#55687a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">MCP</text>
+        <text x="140" y="206" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">AI agent</text>
+        <text x="140" y="226" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">any MCP client</text>
+
+        <!-- Home hub (focal) -->
+        <rect x="320" y="120" width="320" height="160" rx="6" fill="#f7f6f3"/>
+        <rect x="320" y="120" width="320" height="160" rx="6" fill="rgba(11,122,90,0.08)" stroke="#0b7a5a" stroke-width="1.6"/>
+        <rect x="328" y="128" width="32" height="14" rx="2" fill="transparent" stroke="rgba(11,122,90,0.50)" stroke-width="0.8"/>
+        <text x="344" y="138" fill="#0b7a5a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">HUB</text>
+        <text x="480" y="176" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Home hub</text>
+        <text x="480" y="200" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">src/server.mjs · MCP /mcp</text>
+        <text x="480" y="220" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">door requests · guardian</text>
+        <text x="480" y="240" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">voice · face hint (OpenCV)</text>
+
+        <!-- Simulated home (optional / simulated) -->
+        <rect x="320" y="360" width="160" height="80" rx="6" fill="#f7f6f3"/>
+        <rect x="320" y="360" width="160" height="80" rx="6" fill="rgba(15,23,32,0.03)" stroke="#6b7a88" stroke-width="1" stroke-dasharray="4,3"/>
+        <rect x="328" y="368" width="32" height="14" rx="2" fill="transparent" stroke="rgba(107,122,136,0.60)" stroke-width="0.8"/>
+        <text x="344" y="378" fill="#4a5d70" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">SIM</text>
+        <text x="400" y="406" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Simulated home</text>
+        <text x="400" y="426" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">7 devices · lock</text>
+
+        <!-- Ring API (external) -->
+        <rect x="800" y="56" width="400" height="88" rx="6" fill="#f7f6f3"/>
+        <rect x="800" y="56" width="400" height="88" rx="6" fill="#ffffff" stroke="#0a62a0" stroke-width="1.2"/>
+        <rect x="808" y="64" width="36" height="14" rx="2" fill="transparent" stroke="rgba(10,98,160,0.50)" stroke-width="0.8"/>
+        <text x="826" y="74" fill="#0a62a0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">RING</text>
+        <text x="1000" y="92" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Ring API</text>
+        <text x="1000" y="112" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">devices · status · events · snapshot</text>
+        <text x="1000" y="130" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">live view (WHEP) · Chime</text>
+
+        <!-- Family relay (AWS) -->
+        <rect x="800" y="220" width="400" height="88" rx="6" fill="#f7f6f3"/>
+        <rect x="800" y="220" width="400" height="88" rx="6" fill="#ffffff" stroke="#a65400" stroke-width="1.2"/>
+        <rect x="808" y="228" width="32" height="14" rx="2" fill="transparent" stroke="rgba(166,84,0,0.50)" stroke-width="0.8"/>
+        <text x="824" y="238" fill="#a65400" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">AWS</text>
+        <text x="1000" y="256" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Family relay</text>
+        <text x="1000" y="276" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Lambda function URL + DynamoDB</text>
+        <text x="1000" y="294" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">/relay/* · /ring/webhook</text>
+
+        <!-- Alerts and care note (AWS) -->
+        <rect x="800" y="444" width="240" height="88" rx="6" fill="#f7f6f3"/>
+        <rect x="800" y="444" width="240" height="88" rx="6" fill="#ffffff" stroke="#a65400" stroke-width="1.2"/>
+        <rect x="808" y="452" width="32" height="14" rx="2" fill="transparent" stroke="rgba(166,84,0,0.50)" stroke-width="0.8"/>
+        <text x="824" y="462" fill="#a65400" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">AWS</text>
+        <text x="920" y="488" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Alerts and care note</text>
+        <text x="920" y="508" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">SNS · CloudWatch · Bedrock</text>
+
+        <!-- Family phones (input) -->
+        <rect x="480" y="584" width="720" height="72" rx="6" fill="#f7f6f3"/>
+        <rect x="480" y="584" width="720" height="72" rx="6" fill="rgba(74,93,112,0.10)" stroke="#55687a" stroke-width="1"/>
+        <rect x="488" y="592" width="36" height="14" rx="2" fill="transparent" stroke="rgba(85,104,122,0.50)" stroke-width="0.8"/>
+        <text x="506" y="602" fill="#55687a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">USER</text>
+        <text x="840" y="616" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Family phones</text>
+        <text x="840" y="638" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">admin approves at home · enabled phones approve away</text>
+
+        <!-- ===== Legend ===== -->
+        <line x1="40" y1="672" x2="1240" y2="672" stroke="rgba(15,23,32,0.10)" stroke-width="0.8"/>
+        <text x="40" y="700" fill="#4a5d70" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">LEGEND</text>
+        <rect x="120" y="688" width="16" height="16" rx="3" fill="rgba(11,122,90,0.08)" stroke="#0b7a5a" stroke-width="1.6"/>
+        <text x="144" y="700" fill="#0f1720" font-size="12" font-family="'Geist', system-ui, sans-serif">Home hub, the only place a door opens</text>
+        <rect x="412" y="688" width="16" height="16" rx="3" fill="#ffffff" stroke="#0a62a0" stroke-width="1.2"/>
+        <text x="436" y="700" fill="#0f1720" font-size="12" font-family="'Geist', system-ui, sans-serif">Ring</text>
+        <rect x="488" y="688" width="16" height="16" rx="3" fill="#ffffff" stroke="#a65400" stroke-width="1.2"/>
+        <text x="512" y="700" fill="#0f1720" font-size="12" font-family="'Geist', system-ui, sans-serif">AWS</text>
+        <rect x="564" y="688" width="16" height="16" rx="3" fill="rgba(15,23,32,0.03)" stroke="#6b7a88" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="588" y="700" fill="#0f1720" font-size="12" font-family="'Geist', system-ui, sans-serif">Simulated</text>
+        <line x1="680" y1="696" x2="712" y2="696" stroke="#4a5d70" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="720" y="700" fill="#0f1720" font-size="12" font-family="'Geist', system-ui, sans-serif">Dashed: away from home or from Ring (webhooks need partner credentials)</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

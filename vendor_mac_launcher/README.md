@@ -23,4 +23,4 @@ Execution mode is **software-direct (reduced assurance)** — see `BLOCKERS.md` 
 `RING_HUB_API_BASE`, `RING_HUB_COGNITO_DOMAIN`, `RING_HUB_CLIENT_ID` (see the root README), and `RING_MAC_STATE_DIR` (default `~/.ring-mac-worker`, 0700). Tokens, authorization codes and the passphrase are never written to disk or printed.
 
 ## Tests
-`node --test tests/*.test.mjs` — 32 tests, fully local. An in-process TLS fake cloud verifies bearer + Ed25519 proof with the real verifier, nonce replay, single claim, receipts, and the `home_device` flow. Requires `openssl` for the test certificate.
+`node --test tests/*.test.mjs` — 40 tests, fully local. An in-process TLS fake cloud verifies bearer + Ed25519 proof with the real verifier, nonce replay, single claim, receipts, and the `home_device` flow. Requires `openssl` for the test certificate.

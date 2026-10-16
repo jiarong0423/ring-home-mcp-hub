@@ -2,10 +2,13 @@
 
 **An older parent lives alone; Ring watches the front door. When someone is at the door, when something quietly stops (the camera, the home gateway, the hub itself) or a daily routine step does not happen, the family's phone knows. Opening the door always takes approval on a trusted family phone — the admin phone, with Ring live view on its screen, or a phone the admin enabled for remote approval. An AI agent can only ask.**
 
-Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring track**, plus the **AWS Builder** mini challenge. (Repository name: `ring-home-mcp-hub`.)
+![Home MCP Guardian: what runs where. The AI agent can only ask; family phones approve; the hub calls the Ring API and two AWS stacks](docs/system-overview.png)
+
+Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring track**, plus the **AWS Builder** and **Open Source** mini challenges. (Repository name: `ring-home-mcp-hub`.)
 
 - Demo video (under 3 minutes): _link added after upload_ (earlier version: https://youtu.be/_DTcUaVQPgE)
 - License: MIT
+- Open-source companion: [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox) (MIT), the Ring webhook mailbox from A5 as a stand-alone project for any hub without a public address
 
 ## Try it in 2 minutes (judges)
 
@@ -46,14 +49,14 @@ flowchart TB
     HUB["Home hub: src/server.mjs<br/>local MCP /mcp, pairing with a macOS dialog,<br/>door requests, guardian, voice notice,<br/>face hint (OpenCV), daily care note"]
     SIM["SIMULATED: 7 devices,<br/>home gateway, door lock"]
   end
-  RING["Ring API, Playground token in hub memory<br/>devices, status, Event History,<br/>Image Snapshots, Live Video (WHEP)"]
+  RING["Ring API, Playground token in hub memory<br/>devices, capabilities, status, Event History,<br/>Image Snapshots, Live Video (WHEP), Chime playback"]
   subgraph NOTIFY["AWS stack home-mcp-notify"]
     SNS["Amazon SNS email"]
     CW["CloudWatch alarm<br/>home-mcp-hub-silent"]
     BR["Amazon Bedrock<br/>Claude Sonnet 4.5"]
   end
   subgraph RELAY["AWS stack home-mcp-family-relay"]
-    FURL["Lambda function URL"]
+    FURL["Lambda function URL<br/>/relay/* and /ring/webhook"]
     DDB["DynamoDB table (TTL)"]
   end
   AP -- "approve / deny, Ring live view" --> HUB
@@ -65,12 +68,27 @@ flowchart TB
   HUB -- "HubHeartbeat every 5 min" --> CW
   CW -- "ALARM / OK" --> SNS
   HUB -- "converse (day's facts only)" --> BR
-  HUB -- "Ed25519-signed messages" --> FURL
+  HUB -- "Ed25519-signed messages,<br/>Ring events pulled every 10 s" --> FURL
   FP -. "away from home: P-256-signed answer" .-> FURL
+  RING -. "partner webhooks, X-Signature HMAC<br/>(needs partner credentials)" .-> FURL
   FURL --> DDB
+  classDef people fill:#ffffff,stroke:#4a6073,color:#0f1720
+  classDef hub fill:#e3f7ef,stroke:#1f9e78,stroke-width:2px,color:#0f1720
+  classDef sim fill:#eef1f4,stroke:#8a9aa8,stroke-dasharray:4 3,color:#0f1720
+  classDef ring fill:#e3f2fc,stroke:#1a8fd6,stroke-width:2px,color:#0f1720
+  classDef aws fill:#fff1dc,stroke:#e68a00,color:#0f1720
+  class AP,FP,AG people
+  class HUB hub
+  class SIM sim
+  class RING ring
+  class SNS,CW,BR,FURL,DDB aws
+  style MAC fill:#f3fbf8,stroke:#1f9e78
+  style NOTIFY fill:#fffaf2,stroke:#e68a00
+  style RELAY fill:#fffaf2,stroke:#e68a00
+  style PEOPLE fill:#f7f9fb,stroke:#a9b8c6
 ```
 
-More diagrams — door approval with Ring live view, remote approval through the relay, and the guardian states — are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+More diagrams — door approval with Ring live view, remote approval through the relay, the guardian states, and Ring webhooks and Chime — are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -82,11 +100,11 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 
 ## What it does (Ring at the center)
 
-1. **Ring at the door → family phone approves.** A doorbell press, a person seen at the door, or an AI / family request opens a banner on the admin phone with the **Ring door snapshot**, one-tap **Ring live view** (WebRTC) and an optional face hint. Approve within 60 s to open (door SIMULATED) and get a receipt; the live view and snapshot are closed and dropped as soon as you decide.
+1. **Ring at the door → family phone approves.** A doorbell press, a person seen at the door (Ring Event History, or Ring webhooks through the relay), or an AI / family request opens a banner on the admin phone with the **Ring door snapshot**, one-tap **Ring live view** (WebRTC) and an optional face hint. Approve within 60 s to open (door SIMULATED) and get a receipt; the live view and snapshot are closed and dropped as soon as you decide.
 2. **Approve from anywhere** *(deployed on AWS, tested end to end 2026-10-16)*. Family phones answer through a small AWS relay. The cloud only passes messages: every decision is signed by that phone's own key and verified again by the hub at home, so the cloud cannot fake an approval.
 3. **Three layers of "it stopped" detection:** the Ring camera (Ring device status API), the home gateway (heartbeat every 60 s) and **the hub itself** (Amazon CloudWatch emails when the hub's heartbeat stops). Alerts only on change. When the 30-minute Ring token expires, the family is emailed too; the camera is then shown as SIMULATED until a new token is pasted.
 4. **A routine with receipts:** lights, dehumidifier, AC and alarm run on the parent's schedule; each step ends as ✓ confirmed, ✗ not done or ? cannot confirm. Steps missed during an outage are **not** made up silently — the family decides.
-5. **The parent hears it:** the Mac speaker says what happened in fixed, plain sentences ("Someone is at the front door. I have asked your family." / "The door stays locked.").
+5. **The parent hears it:** the Mac speaker says what happened in fixed, plain sentences ("Someone is at the front door. I have asked your family." / "The door stays locked."); when the home has a Ring Chime, it sounds at the same moments (Chime playback API, skipped when offline or snoozed).
 6. **Daily care note** *(Amazon Bedrock, Claude Sonnet 4.5; deployed and tested 2026-10-16)*: written only from the day's log; if the note mentions a time or a number that is not in the log, the family gets a plain template note instead.
 7. **AI agents can only ask:** any MCP client (local server `/mcp`, Streamable HTTP, protocol 2025-11-25) calling the door tool gets `pending_approval`; schedules, batches and the cloud cannot unlock.
 8. **Pairing without a terminal:** the first phone enters the code shown on the Mac and the Mac shows a system dialog (**Allow**); family phones are allowed from the admin phone. Both sides show the same check digits.
@@ -105,6 +123,8 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | Phone pairing, approvals, receipts, timeline, local MCP server, voice notice | **Real**, running on the Mac |
 | Seven home devices, the home gateway, the door lock | **Software simulations** — no physical device is controlled |
 | Face hint | **Real**, on the Mac (OpenCV YuNet + SFace); faces in the video are AI-generated fictional people |
+| Ring partner webhooks (relay `POST /ring/webhook`) | **Real deployment** on the relay stack; HMAC check, de-duplication and the hub's pull tested 2026-10-16 against the live URL with signed events shaped like Ring's documented examples: 3 events reached the hub in 0.7–2.5 s, a repeat was dropped, and on the full hub a doorbell event became a door request and `device_offline` / `device_online` changed the camera state. Real Ring deliveries need partner credentials with account linking, which our account does not have |
+| Ring Chime announcements | Device discovery and capabilities ran on the real Ring API (our Playground account has one camera and no Chime, so the hub logs `no_chime`); playback, snooze and offline handling are tested against the documented responses (`tests/ring_chime.mjs`) |
 | Physical Ring device | Not used (the rules accept a Ring-documented simulator) |
 
 ## Cloud MCP chain (earlier phase): how a command flows
@@ -142,6 +162,8 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | Ring device status (camera heartbeat) | `src/server.mjs` (`ringCameraStatus`), `src/guardian.mjs` |
 | Ring Image Snapshots (door snapshot) | `src/ring_snapshot.mjs` |
 | Ring Live Video (WebRTC WHEP, live view on the approval banner) | `src/ring_live.mjs`, `public/door.mjs` |
+| Ring Chime (capabilities, status, configurations, audio playback) | `src/ring_chime.mjs` |
+| Ring partner webhooks (receiver on the relay, pull on the hub) | `cloud/aws/ring-private/family-relay.mjs` (`ringWebhook`, op `ringEvents`), `family-relay-http.mjs`, `src/remote_relay.mjs` (`pullRingEvents`), `src/server.mjs` (`onRingWebhookEvent`) |
 | Door requests and approvals | `src/door_requests.mjs`, `public/door.mjs` |
 | Family relay (cloud + hub) | `cloud/aws/ring-private/family-relay*.mjs`, `cloud/aws/family-relay/template.json`, `src/remote_relay.mjs` |
 | Email alerts / dead-man alarm | `src/notify_sns.mjs`, `cloud/aws/notify/notify-template.json` |
@@ -156,7 +178,7 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 
 | Service | Role in the project |
 |---|---|
-| Amazon API Gateway (REST, regional, TLS 1.2+ security policy, throttled) | Endpoints used in the demo: `/mcp`, `/auth/*`, `/owner/bootstrap`, `/mac/enroll`, `/mac/commands/fetch`, `/mac/commands/receipt`, `/.well-known/oauth-protected-resource`. Legacy account-link routes (`/ring/token`, `/ring/link`, `/ring/complete`, `/ring/webhook`) are deployed but not part of the demonstrated flow. |
+| Amazon API Gateway (REST, regional, TLS 1.2+ security policy, throttled) | Endpoints used in the demo: `/mcp`, `/auth/*`, `/owner/bootstrap`, `/mac/enroll`, `/mac/commands/fetch`, `/mac/commands/receipt`, `/.well-known/oauth-protected-resource`. Legacy account-link routes on API Gateway (`/ring/token`, `/ring/link`, `/ring/complete`, `/ring/webhook`) are deployed but not part of the demonstrated flow; the Ring webhook receiver in A5 is a different route, on the family relay's function URL. |
 | AWS Lambda (Node.js 24, arm64, AWS SAM) + layer | Earlier phase: our cloud MCP server and the owner / Mac endpoints; the layer holds pinned approval files |
 | Amazon Cognito | Owner sign-in: managed login, MFA required, PKCE public client, 5-minute access tokens, MCP resource-server scopes |
 | Amazon DynamoDB | Identity links and latches, single-slot command mailbox, receipts, Mac enrollments, proof nonces, anti-rollback witness |
@@ -164,7 +186,7 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | AWS Secrets Manager | Provider and HMAC digest secrets, pinned to exact versions |
 | AWS CloudFormation, Amazon S3, IAM | Gated change-set deployments, pinned build artifacts, least-privilege deployer and runtime roles |
 | Amazon SNS + Amazon CloudWatch | Family email alerts; a dead-man alarm that emails when the hub's heartbeat metric stops |
-| AWS Lambda function URL (Node.js 22, arm64) + Amazon DynamoDB (stack `home-mcp-family-relay`) | Passes signed approval messages between the hub and enabled phones; table rows expire by TTL; the function's role can only read and write that table |
+| AWS Lambda function URL (Node.js 22, arm64) + Amazon DynamoDB (stack `home-mcp-family-relay`) | Passes signed approval messages between the hub and enabled phones, and receives Ring webhooks for the hub (`POST /ring/webhook`, X-Signature HMAC); table rows expire by TTL; the function's role can only read and write that table |
 | Amazon Bedrock (Converse, `global.anthropic.claude-sonnet-4-5-20250929-v1:0`) | Daily care note written from the day's facts only, called through the AWS CLI with the notifier's least-privilege profile (permission limited to that model) |
 | Amazon CloudWatch Logs | Log groups for both Lambda functions (relay logs kept 7 days) |
 
@@ -241,7 +263,7 @@ recorded on the guardian timeline (email for "someone is asking" and "it was ope
 
 Deploy `cloud/aws/family-relay/template.json` (parameters: the hub's relay **public** key, printed at start, and the code bundle from `node scripts/build_family_relay_bundle.mjs <dir>`), then start the hub with `HOME_MCP_RELAY_BASE=<RelayBaseUrl output>`. On the admin phone, **Remote approval → Enable remote approval** gives a one-time link (10 minutes) for this phone or a family phone. That phone makes its own key in the browser; the hub confirms it. Door requests then appear on the relay page as text only (who asks, seconds left — never the snapshot), and an approval is verified by the hub with that phone's key before anything opens. The door-request email carries the page link once a phone is enabled. **Remove** on the admin phone stops a phone at once.
 
-**Ring webhooks through the same relay (optional).** A hub at home sits behind NAT, so it cannot receive Ring's webhooks itself. The relay's `POST /ring/webhook` is the public HTTPS endpoint: it checks the documented `X-Signature` (`sha256=` + HMAC-SHA256 of the raw body, with the HMAC key issued with your Ring partner credentials), drops repeats by `meta.request_id`, answers within the 5-second limit, and keeps only the event type, sub-type, device id and time (no thumbnails, no account id). Start the hub with `HOME_MCP_RING_WEBHOOKS=on` and it pulls the queue every 10 s over its signed channel; the first pull only notes the position, so older events never open anything. `button_press` and human `motion_detected` become door requests while fresh (2 minutes); `device_offline` / `device_online` change the guardian's camera state at once (one email each way). Deploy with `RingWebhookHmacKey` (NoEcho; empty = the route answers 503). Receiving real Ring webhooks needs Ring partner credentials with account linking, which our developer account does not have, so this path is tested with payloads shaped like the documented examples (`tests/remote_relay.mjs`, `cloud/aws/ring-private/tests/family-relay.test.mjs`).
+**Ring webhooks through the same relay (optional).** A hub at home sits behind NAT, so it cannot receive Ring's webhooks itself. The relay's `POST /ring/webhook` is the public HTTPS endpoint: it checks the documented `X-Signature` (`sha256=` + HMAC-SHA256 of the raw body, with the HMAC key issued with your Ring partner credentials), drops repeats by `meta.request_id`, answers quickly (Ring expects a reply within 5 seconds; the work is a few table reads and writes), and keeps only the event type, sub-type, device id and time (no thumbnails, no account id). Start the hub with `HOME_MCP_RING_WEBHOOKS=on` and it pulls the queue every 10 s over its signed channel; the first pull only notes the position, so older events never open anything. `button_press`, `person_detected` and human `motion_detected` become door requests while fresh (2 minutes); `device_offline` / `device_online` change the guardian's camera state at once (one email each way). Deploy with `RingWebhookHmacKey` (NoEcho; empty = the route answers 503). Receiving real Ring webhooks needs Ring partner credentials with account linking, which our developer account does not have, so this path is tested with payloads shaped like the documented examples (`tests/remote_relay.mjs`, `cloud/aws/ring-private/tests/family-relay.test.mjs`) and with signed test events against the live relay. The same mailbox is published as a stand-alone MIT project: [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox).
 
 ### A6. Voice notice and daily care note (optional)
 
@@ -290,10 +312,10 @@ In the console: pair a device → operator code → **Cognito login** → sign i
 ### Tests
 
 ```bash
-npm test                  # 257 tests: hub, pairing, door approval, live view, family relay, guardian, voice, care note, Ring clients (offline fakes)
+npm test                  # 266 tests: hub, pairing, door approval, live view, family relay, Ring webhooks, Ring Chime, guardian, email alerts, voice, care note, Ring clients (offline fakes)
 npm run eval              # 30 simulated days of outages, blips and routine steps (numbers above)
 npm run stress            # 8 stress scenarios against the real server with a deliberately failing fake cloud
-npm run test:mac-worker   # Mac worker: keygen, PKCE, signed fetch/receipt, home_device flow against a fake cloud
+npm run test:mac-worker   # 40 tests, Mac worker: keygen, PKCE, signed fetch/receipt, home_device flow against a fake cloud
 ```
 
 Cloud tests live in `cloud/aws/ring-private/tests` (run `npm ci` there first; some tests need `RING_TRANSPORT_TEST_ROOT=/private/tmp/<dir>`).
@@ -329,7 +351,7 @@ See `SECURITY.md` and `THREAT_MODEL.md`.
 
 ## Limitations (honest scope)
 
-- The Ring side uses the **Ring Developer Playground sandbox**; production Ring account linking (and so webhooks and refresh tokens) was not available to our account, so the hub polls Event History every 10 s while a 30-minute Playground token is loaded.
+- The Ring side uses the **Ring Developer Playground sandbox**; production Ring account linking (and so webhooks and refresh tokens) was not available to our account, so the hub polls Event History every 10 s while a 30-minute Playground token is loaded. The webhook mailbox is deployed and tested with signed events in the documented format, but has not received a real Ring delivery; Chime playback has not run on a real Chime.
 - The family relay and the Bedrock note are optional; until deployed, approval works from the admin phone at home and the daily note is the template.
 - The seven home devices are **software simulations**; six accept allowlisted cloud actions.
 - The Mac worker runs in **software-direct, reduced-assurance mode** (no local Wi-Fi trust or anti-rollback re-check on the Mac).
@@ -338,7 +360,7 @@ See `SECURITY.md` and `THREAT_MODEL.md`.
 
 ## Product feedback for Ring
 
-Full write-up in the Devpost submission and [docs/FRICTION_LOG.md](docs/FRICTION_LOG.md); highlights: Playground tokens last ~30 minutes and cannot be refreshed; the Playground has no doorbell-press simulation and its simulated motion is video content, not Event History; the snapshot image URL answers 416 until the camera has streamed; account linking was unavailable for a non-US developer account. WHEP live view worked first time following Ring's hello-world sample.
+Full write-up in the Devpost submission and [docs/FRICTION_LOG.md](docs/FRICTION_LOG.md); highlights: Playground tokens last ~30 minutes and cannot be refreshed; the Playground has no doorbell-press simulation and its simulated motion is video content, not Event History; the snapshot image URL answers 416 until the camera has streamed; account linking was unavailable for a non-US developer account; webhooks need a public HTTPS endpoint, which a home hub does not have; the Playground has no Chime. WHEP live view worked first time following Ring's hello-world sample.
 
 ## Built during the hackathon
 

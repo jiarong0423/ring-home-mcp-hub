@@ -7,7 +7,7 @@ Please open a GitHub issue without exploit details, or contact the maintainer th
 - No credentials, tokens, keys or account ids are committed. Deployment values (API base, Cognito domain, client id) are read from environment variables; the code ships with placeholders.
 - Ring Developer Playground tokens are imported from the local clipboard into server memory (console) or passed once through the `RING_PLAYGROUND_TOKEN` environment variable / hidden prompt (Mac worker CLI). They never reach the browser and are not written to disk.
 - Cognito access tokens (5-minute lifetime) stay in local server memory; authorization codes and PKCE verifiers are single use.
-- The hub's relay signing key (Ed25519) is a 0600 file in `~/.home-mcp-console/`; only its public key goes into the relay stack. Phones enabled for remote approval keep a non-extractable WebCrypto key in their browser.
+- The hub's relay signing key (Ed25519) is a 0600 file in `~/.home-mcp-console/`; only its public key goes into the relay stack. The Ring webhook HMAC key is a NoEcho stack parameter, passed to the relay Lambda as an environment variable (readable by account principals allowed to read the function configuration); it is never logged. Phones enabled for remote approval keep a non-extractable WebCrypto key in their browser.
 - Ring Playground tokens pasted on the admin phone stay in hub memory only; for live view the hub forwards the phone's WebRTC offer and keeps the token.
 - The Mac Ed25519 signing key is encrypted at rest. The passphrase comes from a hidden terminal prompt (or, for scripted CLI use, `RING_MAC_KEY_PASSPHRASE` / piped stdin); it is never accepted on the command line or from the browser.
 
@@ -15,7 +15,7 @@ Please open a GitHub issue without exploit details, or contact the maintainer th
 - The local console binds to `127.0.0.1` and checks Host/Origin headers; it is not reachable from other machines.
 - The Mac worker only makes outbound HTTPS requests to the configured API Gateway and Cognito domain; it opens no inbound port.
 - Cloud MCP chain (earlier phase): the AWS endpoints are public by design and require a Cognito access token with the MCP scopes; Mac endpoints additionally require an Ed25519 request proof from the enrolled key.
-- Family relay: a public Lambda function URL. Hub calls must carry an Ed25519 signature from the pinned hub key; phone calls must carry a P-256 signature from an activated phone; the hub verifies each decision again before anything opens. Bodies are capped at 8 KB and every row expires.
+- Family relay: a public Lambda function URL. Hub calls must carry an Ed25519 signature from the pinned hub key; phone calls must carry a P-256 signature from an activated phone; the hub verifies each decision again before anything opens. Ring webhook calls (`POST /ring/webhook`) must carry a valid `X-Signature` HMAC-SHA256 of the raw body; without a configured key the route answers 503. Bodies are capped at 8 KB (16 KB for `/ring/webhook`) and every row expires.
 - The hub calls Amazon SNS, CloudWatch and Bedrock through the AWS CLI with a dedicated least-privilege profile; it never handles access keys.
 
 ## Dependencies
