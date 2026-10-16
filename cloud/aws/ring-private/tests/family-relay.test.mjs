@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync, createPublicKey, randomBytes, sign } from 'node:crypto';
 
 process.env.NODE_ENV = 'test';
-const { handler, installFamilyRelayFactoryForTest } = await import('../handler.mjs');
 const { createFamilyRelay, createMemoryRelayStore, canonical, MAC_SCHEMA } = await import('../family-relay.mjs');
 const { createFamilyRelayHttp, createDynamoRelayStore } = await import('../family-relay-http.mjs');
 const { createHash } = await import('node:crypto');
@@ -16,35 +15,22 @@ function macBody(op, payload) {
   const claims = { schema: MAC_SCHEMA, op, payloadSha256: sha(canonical(payload)), nonce: randomBytes(18).toString('base64url'), issuedAt: now, expiresAt: now + 10_000 };
   return JSON.stringify({ claims, signature: sign(null, Buffer.from(canonical(claims)), hub).toString('base64url'), payload });
 }
-const event = (method, path, body = null) => ({ resource: path, path, httpMethod: method, headers: {}, multiValueHeaders: {}, queryStringParameters: null,
-  multiValueQueryStringParameters: null, pathParameters: null, stageVariables: null, requestContext: { apiId: 'api123', stage: 'staging' }, body, isBase64Encoded: false });
+const ev = (body) => ({ body, isBase64Encoded: false });
 
-test('family relay routes are off unless RING_FAMILY_RELAY_STATE=enabled', async () => {
-  process.env.RING_BACKEND_STATE = 'enabled'; delete process.env.RING_FAMILY_RELAY_STATE;
-  const r = await handler(event('GET', '/family'));
-  assert.equal(r.statusCode, 503);
-});
-
-test('page, script and hub/phone relay calls through the Lambda handler; wrong stage refused', async () => {
-  process.env.RING_BACKEND_STATE = 'enabled'; process.env.RING_FAMILY_RELAY_STATE = 'enabled';
-  process.env.RING_MCP_EXPECTED_API_ID = 'api123'; process.env.RING_MCP_EXPECTED_STAGE = 'staging';
-  installFamilyRelayFactoryForTest(() => createFamilyRelayHttp({ relay: createFamilyRelay({ store: createMemoryRelayStore(), macPublicKeySpki: spki }) }));
-  const page = await handler(event('GET', '/family'));
+// The relay is served by its own stand-alone stack (cloud/aws/family-relay); the formal ring-private stack is not changed.
+test('HTTP edge: page with a strict CSP, script, hub calls signature-checked, junk and oversized bodies refused', async () => {
+  const http = createFamilyRelayHttp({ relay: createFamilyRelay({ store: createMemoryRelayStore(), macPublicKeySpki: spki }) });
+  const page = await http('family-page', ev(null));
   assert.equal(page.statusCode, 200); assert.match(page.headers['content-type'], /text\/html/u);
-  assert.match(page.headers['content-security-policy'], /script-src 'self'/u);
-  assert.match(page.body, /Remote approval/u);
-  const js = await handler(event('GET', '/family/app.js'));
+  assert.match(page.headers['content-security-policy'], /script-src 'self'/u); assert.match(page.body, /Remote approval/u);
+  const js = await http('family-js', ev(null));
   assert.equal(js.statusCode, 200); assert.match(js.body, /crypto\.subtle\.generateKey/u);
-  const ok = await handler(event('POST', '/relay/mac', macBody('code', { codeSha256: sha('ABCDEFGH') })));
+  const ok = await http('relay-mac', ev(macBody('code', { codeSha256: sha('ABCDEFGH') })));
   assert.equal(ok.statusCode, 200, ok.body); assert.deepEqual(JSON.parse(ok.body), { ok: true });
-  const forged = await handler(event('POST', '/relay/mac', macBody('code', { codeSha256: sha('X') }).replace(/"signature":"[^"]+"/u, `"signature":"${Buffer.alloc(64).toString('base64url')}"`)));
+  const forged = await http('relay-mac', ev(macBody('code', { codeSha256: sha('X') }).replace(/"signature":"[^"]+"/u, `"signature":"${Buffer.alloc(64).toString('base64url')}"`)));
   assert.equal(forged.statusCode, 403); assert.equal(JSON.parse(forged.body).error, 'MAC_SIGNATURE_INVALID');
-  const junk = await handler(event('POST', '/relay/phone', '{not json'));
-  assert.equal(junk.statusCode, 400);
-  const big = await handler(event('POST', '/relay/phone', JSON.stringify({ x: 'y'.repeat(9000) })));
-  assert.equal(big.statusCode, 413);
-  const wrongStage = await handler({ ...event('GET', '/family'), requestContext: { apiId: 'api123', stage: 'prod' } });
-  assert.equal(wrongStage.statusCode, 400);
+  assert.equal((await http('relay-phone', ev('{not json'))).statusCode, 400);
+  assert.equal((await http('relay-phone', ev(JSON.stringify({ x: 'y'.repeat(9000) })))).statusCode, 413);
 });
 
 test('DynamoDB store: TTL honoured on read; ifNotExists maps a conditional failure to false', async () => {

@@ -1,0 +1,72 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Home MCP family remote-approval relay: one Lambda behind a function URL, its own DynamoDB table (TTL), and a role that can only read and write that table. The cloud only passes signed messages; the home hub verifies the phone's signature before anything opens. Independent of the main Home MCP cloud stack.",
+  "Parameters": {
+    "HubPublicKeySpki": {
+      "Type": "String",
+      "Description": "The home hub's relay PUBLIC key (Ed25519 SPKI, base64url), printed by the hub at start. Requests not signed by the matching private key are refused.",
+      "AllowedPattern": "^[A-Za-z0-9_-]{40,120}$"
+    },
+    "CodeBucket": { "Type": "String", "AllowedPattern": "^[a-z0-9][a-z0-9.-]{2,62}$" },
+    "CodeKey": { "Type": "String", "AllowedPattern": "^family-relay/[a-f0-9]{64}/family-relay\\.zip$" }
+  },
+  "Resources": {
+    "RelayTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [{ "AttributeName": "pk", "AttributeType": "S" }],
+        "KeySchema": [{ "AttributeName": "pk", "KeyType": "HASH" }],
+        "TimeToLiveSpecification": { "AttributeName": "expires_at", "Enabled": true },
+        "SSESpecification": { "SSEEnabled": true }
+      }
+    },
+    "RelayLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": { "LogGroupName": "/aws/lambda/home-mcp-family-relay", "RetentionInDays": 7 }
+    },
+    "RelayRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": { "Version": "2012-10-17", "Statement": [{ "Effect": "Allow", "Principal": { "Service": "lambda.amazonaws.com" }, "Action": "sts:AssumeRole" }] },
+        "Policies": [{
+          "PolicyName": "family-relay-least-privilege",
+          "PolicyDocument": { "Version": "2012-10-17", "Statement": [
+            { "Sid": "RelayTableOnly", "Effect": "Allow", "Action": ["dynamodb:GetItem", "dynamodb:PutItem"], "Resource": { "Fn::GetAtt": ["RelayTable", "Arn"] } },
+            { "Sid": "OwnLogsOnly", "Effect": "Allow", "Action": ["logs:CreateLogStream", "logs:PutLogEvents"], "Resource": { "Fn::Sub": "${RelayLogGroup.Arn}" } }
+          ] }
+        }]
+      }
+    },
+    "RelayFunction": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": "RelayLogGroup",
+      "Properties": {
+        "FunctionName": "home-mcp-family-relay",
+        "Runtime": "nodejs22.x",
+        "Architectures": ["arm64"],
+        "Handler": "family-relay-lambda.handler",
+        "MemorySize": 256,
+        "Timeout": 10,
+        "Role": { "Fn::GetAtt": ["RelayRole", "Arn"] },
+        "Code": { "S3Bucket": { "Ref": "CodeBucket" }, "S3Key": { "Ref": "CodeKey" } },
+        "Environment": { "Variables": { "RELAY_TABLE": { "Ref": "RelayTable" }, "RELAY_MAC_KEY_SPKI": { "Ref": "HubPublicKeySpki" } } }
+      }
+    },
+    "RelayUrl": {
+      "Type": "AWS::Lambda::Url",
+      "Properties": { "AuthType": "NONE", "TargetFunctionArn": { "Fn::GetAtt": ["RelayFunction", "Arn"] } }
+    },
+    "RelayUrlInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": { "Action": "lambda:InvokeFunctionUrl", "FunctionName": { "Ref": "RelayFunction" }, "Principal": "*", "FunctionUrlAuthType": "NONE" }
+    },
+    "RelayFunctionInvokeViaUrlPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": { "Action": "lambda:InvokeFunction", "FunctionName": { "Ref": "RelayFunction" }, "Principal": "*", "InvokedViaFunctionUrl": true }
+    }
+  },
+  "Outputs": {
+    "RelayBaseUrl": { "Description": "Set HOME_MCP_RELAY_BASE to this (no trailing slash needed).", "Value": { "Fn::GetAtt": ["RelayUrl", "FunctionUrl"] } }
+  }
+}

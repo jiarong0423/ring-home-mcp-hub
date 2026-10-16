@@ -64,13 +64,7 @@ test('all public API resources and invoke permission are conditionally absent by
     const block = resourceBlock(names[index], next);
     assert.match(block, /Condition: PublicIngressEnabled/, names[index]);
   }
-  // 14 existing methods + 4 family-relay methods (POST /relay/mac, POST /relay/phone, GET /family, GET /family/app.js)
-  assert.equal((template.match(/AuthorizationType: NONE/g) ?? []).length, 18);
-  for (const name of ['RingRelayResource', 'RingRelayMacResource', 'RingRelayMacMethod', 'RingRelayMacInvokePermission', 'RingRelayPhoneResource', 'RingRelayPhoneMethod',
-    'RingRelayPhoneInvokePermission', 'RingFamilyResource', 'RingFamilyMethod', 'RingFamilyInvokePermission', 'RingFamilyAppResource', 'RingFamilyAppMethod', 'RingFamilyAppInvokePermission']) {
-    assert.match(template, new RegExp(`\\n  ${name}:\\n    Type: [^\\n]+\\n    Condition: PublicIngressEnabled\\n`, 'u'), name);
-  }
-  assert.match(template, /RING_FAMILY_RELAY_STATE: !If \[FamilyRelayEnabled, enabled, blocked\]/u);
+  assert.equal((template.match(/AuthorizationType: NONE/g) ?? []).length, 14);
   for (const name of ['RingMacResource', 'RingMacCommandsResource', 'RingMacFetchResource',
     'RingMacReceiptResource', 'RingMacFetchMethod', 'RingMacReceiptMethod',
     'RingMacFetchInvokePermission', 'RingMacReceiptInvokePermission']) {
@@ -249,7 +243,7 @@ test('auth routes reuse the admitted API and Lambda with four exact verb and pat
     assert.match(permission, /FunctionName: !Ref RingPrivateFunction/);
     assert.doesNotMatch(permission, /\*/);
   }
-  const deployment = block('RingAuthApiDeploymentV3');
+  const deployment = block('RingAuthApiDeploymentV2');
   assert.match(deployment, /Condition: ManagedCognitoConfigured/);
   for (const name of ['RingTokenExchangeMethod', 'RingAccountLinkMethod', 'RingCompletionMethod',
     'RingWebhookMethod', 'RingMcpMethod', 'RingProtectedResourceMetadataMethod', 'RingMacFetchMethod',
@@ -258,7 +252,7 @@ test('auth routes reuse the admitted API and Lambda with four exact verb and pat
   }
   assert.match(block('RingPrivateApiDeployment'), /RestApiId: !Ref RingPrivateApi/);
   const stage = block('RingPrivateApiStage');
-  assert.ok(stage.includes('DeploymentId: !If [ManagedCognitoConfigured, !Ref RingAuthApiDeploymentV3, !Ref RingPrivateApiDeployment]'));
+  assert.ok(stage.includes('DeploymentId: !If [ManagedCognitoConfigured, !Ref RingAuthApiDeploymentV2, !Ref RingPrivateApiDeployment]'));
   assert.match(stage, /LoggingLevel: "OFF"/);
   assert.match(stage, /DataTraceEnabled: false/);
   assert.match(stage, /MetricsEnabled: true/);
@@ -372,7 +366,7 @@ test('owner bootstrap route resources are gated on PublicIngressEnabled exactly 
   const permission = resourceBlock('RingOwnerBootstrapInvokePermission', 'RingMacReceiptMethod');
   assert.ok(permission.includes('${RingPrivateApi}/${StageName}/POST/owner/bootstrap\n'));
   assert.doesNotMatch(permission, /\*/);
-  for (const [deployment, after] of [['RingPrivateApiDeployment', 'RingAuthResource'], ['RingAuthApiDeploymentV3', 'RingPrivateApiStage']]) assert.ok(resourceBlock(deployment, after).includes('      - RingOwnerBootstrapMethod\n'), deployment);
+  for (const [deployment, after] of [['RingPrivateApiDeployment', 'RingAuthResource'], ['RingAuthApiDeploymentV2', 'RingPrivateApiStage']]) assert.ok(resourceBlock(deployment, after).includes('      - RingOwnerBootstrapMethod\n'), deployment);
   const inputs = { ...provisionedInputs, OwnerBootstrapState: 'ENABLED', OwnerBootstrapApprovalSha256: 'b'.repeat(64), MacEnrollmentState: 'DISABLED', MacEnrollmentApprovalSha256: 'UNCONFIGURED',
     CognitoPkceResourceCompatibility: 'VERIFIED', FormalMcpAdmissionState: 'ADMITTED', McpAdmissionSha256: 'a'.repeat(64) };
   assert.equal(evaluateCondition('PublicIngressEnabled', inputs), true);
@@ -386,7 +380,7 @@ test('owner bootstrap route resources are gated on PublicIngressEnabled exactly 
 });
 
 test('round 3 F1: every Deployment DependsOn target is created whenever the deployment is (no condition-excluded DependsOn when a state is DISABLED)', () => {
-  for (const [deployment, after] of [['RingPrivateApiDeployment', 'RingAuthResource'], ['RingAuthApiDeploymentV3', 'RingPrivateApiStage']]) {
+  for (const [deployment, after] of [['RingPrivateApiDeployment', 'RingAuthResource'], ['RingAuthApiDeploymentV2', 'RingPrivateApiStage']]) {
     const block = resourceBlock(deployment, after);
     const own = /\n    Condition: (\w+)\n/.exec(block)[1];
     const deps = [...block.slice(block.indexOf('DependsOn:')).matchAll(/^      - (\w+)$/gm)].map(m => m[1]);

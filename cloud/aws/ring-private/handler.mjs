@@ -6,7 +6,6 @@ import { parseRestV1AccountLinkEvent } from './api-gateway-account-link-event.mj
 import { parseRestApiWebhookEvent } from './api-gateway-event.mjs';
 import { createProductionRuntime } from './runtime-composition.mjs';
 import { createProductionMcpRuntime, parseRestV1McpEvent } from './mcp-rest-composition.mjs';
-import { createProductionFamilyRelayHttp } from './family-relay-http.mjs';
 
 export const WEBHOOK_DEADLINE_MS = 4_000;
 
@@ -24,14 +23,8 @@ const ROUTES = Object.freeze(new Map([
   ['POST /mac/commands/receipt', 'mac-receipt'],
   ['POST /mac/enroll', 'mac-enroll'],
   ['POST /owner/bootstrap', 'owner-bootstrap'],
-  ['GET /.well-known/oauth-protected-resource', 'metadata'],
-  // family remote-approval relay (family-relay.mjs): hub and phones sign every request themselves
-  ['POST /relay/mac', 'relay-mac'],
-  ['POST /relay/phone', 'relay-phone'],
-  ['GET /family', 'family-page'],
-  ['GET /family/app.js', 'family-js']
+  ['GET /.well-known/oauth-protected-resource', 'metadata']
 ]));
-const RELAY_ROUTES = new Set(['relay-mac', 'relay-phone', 'family-page', 'family-js']);
 
 const SAFE_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
@@ -83,16 +76,7 @@ function mcpRoute(route) {
   return ['mcp', 'metadata', 'mac-fetch', 'mac-receipt', 'mac-enroll', 'owner-bootstrap'].includes(route);
 }
 
-function relayEventOk(event) {
-  const ctx = event.requestContext;
-  if (!ctx || typeof ctx !== 'object') return false;
-  if (process.env.RING_MCP_EXPECTED_API_ID && ctx.apiId !== process.env.RING_MCP_EXPECTED_API_ID) return false;
-  if (process.env.RING_MCP_EXPECTED_STAGE && ctx.stage !== process.env.RING_MCP_EXPECTED_STAGE) return false;
-  return event.body === null || event.body === undefined || typeof event.body === 'string';
-}
-
 function preflight(route, event) {
-  if (RELAY_ROUTES.has(route)) return relayEventOk(event);
   try {
     if (route === 'browser') parseBrowserSessionEvent(event);
     else if (mcpRoute(route)) parseRestV1McpEvent(event, {
@@ -126,14 +110,6 @@ function safeAudit(route, outcome, statusCode) {
   }
 }
 
-// The AWS SDK is loaded only when the relay is first used (same lazy pattern as runtime-composition).
-let familyRelayFactory = async () => createProductionFamilyRelayHttp({
-  ports: (await import('./aws-sdk-v3-ports.mjs')).createDefaultAwsSdkV3Ports({ region: process.env.AWS_REGION }) });
-let familyRelayHandle = null;
-export function installFamilyRelayFactoryForTest(factory) {
-  if (process.env.NODE_ENV !== 'test' || typeof factory !== 'function') throw new TypeError('test_family_relay_factory_denied');
-  familyRelayFactory = factory; familyRelayHandle = null;
-}
 let browserRuntimeFactory = createProductionBrowserSessionRuntime;
 let browserRuntimePromise = null;
 export function installBrowserRuntimeFactoryForTest(factory) {
@@ -284,11 +260,6 @@ export async function handler(event, invocationContext) {
     safeAudit(route, 'not_configured', response.statusCode);
     return response;
   }
-  if (RELAY_ROUTES.has(route) && process.env.RING_FAMILY_RELAY_STATE !== 'enabled') {
-    const response = blockedReply();
-    safeAudit(route, 'not_configured', response.statusCode);
-    return response;
-  }
   if (route === 'mac-enroll' && process.env.RING_MAC_ENROLLMENT_STATE !== 'enabled') {
     const response = blockedReply();
     safeAudit(route, 'not_configured', response.statusCode);
@@ -313,13 +284,7 @@ export async function handler(event, invocationContext) {
   }
 
   let response;
-  if (RELAY_ROUTES.has(route)) {
-    try {
-      familyRelayHandle ??= Promise.resolve().then(() => familyRelayFactory());
-      const candidate = await (await familyRelayHandle)(route, event);
-      response = finiteResponse(candidate) || ((route === 'family-page' || route === 'family-js') && candidate?.statusCode === 200) ? candidate : reply(503, 'unavailable');
-    } catch { familyRelayHandle = null; response = reply(503, 'unavailable'); }
-  } else if (route === 'browser') {
+  if (route === 'browser') {
     try {
       browserRuntimePromise ??= Promise.resolve().then(() => browserRuntimeFactory());
       const candidate = await (await browserRuntimePromise).handle(event, invocationContext);
