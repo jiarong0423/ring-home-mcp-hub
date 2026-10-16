@@ -170,3 +170,16 @@ test('door email: the remote-approval link is added only while a family phone is
   g.noteDoor('approved', { ...req, approver: 'Amy (remote)', receipt: { receiptId: 'r1' } });
   assert.doesNotMatch(emails[2].message, /Away from home/u, 'only the request email carries the link');
 });
+
+test('Ring token expiry is never silent: the switch back to simulation emails the family once', async () => {
+  let state = 'live';
+  const ringStatus = async () => (state === 'live' ? { state: 'live', online: true } : { state: 'token_expired' });
+  const s = setup({ ringStatus });
+  s.advanceTo(at(7, 0)); await new Promise((r) => setImmediate(r));
+  state = 'expired';
+  s.advanceTo(at(7, 20)); for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+  s.advanceTo(at(7, 40)); for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+  const mails = s.emails.filter((m) => /Ring connection ended/u.test(m.subject));
+  assert.equal(mails.length, 1, JSON.stringify(s.emails.map((m) => m.subject)));
+  assert.match(mails[0].message, /token_expired/u); assert.match(mails[0].message, /SIMULATED/u);
+});

@@ -12,9 +12,9 @@ Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring t
 | Gateway outages over 5 min detected (30 simulated days) | **12 / 12**, alert 4.0–4.9 min after it went quiet |
 | "Offline" alerts from blips under 3 min (false alarms) | **0 / 22** |
 | Emails sent vs. "alert on every missed heartbeat" | **59 vs 765** |
-| 100 AI agents asking to unlock at once | **1** request created, door stays locked |
+| 100 concurrent MCP unlock calls | **1** request created, door stays locked |
 | Same phone credential sent 20 times at once to approve | door opened **once**; that phone is revoked |
-| Remote approval while the cloud fails 25 % of calls | **0** wrong outcomes (9 / 10 delivered; the missed one stayed locked) |
+| Remote approval through a test relay failing 25 % of calls (`npm run stress`) | **0** wrong outcomes (9 / 10 delivered in the recorded run; the missed one stayed locked) |
 
 ```mermaid
 flowchart TB
@@ -65,10 +65,10 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 
 1. **Ring at the door → family phone approves.** A doorbell press, a person seen at the door, or an AI / family request opens a banner on the admin phone with the **Ring door snapshot**, one-tap **Ring live view** (WebRTC) and an optional face hint. Approve within 60 s to open (door SIMULATED) and get a receipt; the live view and snapshot are closed and dropped as soon as you decide.
 2. **Approve from anywhere** *(deployed on AWS, tested end to end 2026-10-16)*. Family phones answer through a small AWS relay. The cloud only passes messages: every decision is signed by that phone's own key and verified again by the hub at home, so the cloud cannot fake an approval.
-3. **Three layers of "it stopped" detection:** the Ring camera (Ring device status API), the home gateway (heartbeat every 60 s) and **the hub itself** (Amazon CloudWatch emails when the hub's heartbeat stops). Alerts only on change.
+3. **Three layers of "it stopped" detection:** the Ring camera (Ring device status API), the home gateway (heartbeat every 60 s) and **the hub itself** (Amazon CloudWatch emails when the hub's heartbeat stops). Alerts only on change. When the 30-minute Ring token expires, the family is emailed too; the camera is then shown as SIMULATED until a new token is pasted.
 4. **A routine with receipts:** lights, dehumidifier, AC and alarm run on the parent's schedule; each step ends as ✓ confirmed, ✗ not done or ? cannot confirm. Steps missed during an outage are **not** made up silently — the family decides.
 5. **The parent hears it:** the Mac speaker says what happened in fixed, plain sentences ("Someone is at the front door. I have asked your family." / "The door stays locked.").
-6. **Daily care note** *(Amazon Bedrock, Claude Sonnet 4.5; deployed and tested 2026-10-16)*: written only from the day's log; if the note mentions a number that is not in the log, the family gets a plain template note instead.
+6. **Daily care note** *(Amazon Bedrock, Claude Sonnet 4.5; deployed and tested 2026-10-16)*: written only from the day's log; if the note mentions a time or a number that is not in the log, the family gets a plain template note instead.
 7. **AI agents can only ask:** any MCP client (local server `/mcp`, Streamable HTTP, protocol 2025-11-25) calling the door tool gets `pending_approval`; schedules, batches and the cloud cannot unlock.
 8. **Pairing without a terminal:** the first phone enters the code shown on the Mac and the Mac shows a system dialog (**Allow**); family phones are allowed from the admin phone. Both sides show the same check digits.
 9. **Optional local face hint:** only people who agreed are enrolled; only an encrypted feature is kept (no photo); a hint only — **it never opens the door**.
@@ -80,7 +80,7 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | Ring API: devices, device status, Event History, Image Snapshots, **Live Video (WHEP)** | **Real calls** with a Ring Developer Playground token (30 min). Tested 2026-10-16: live view 1280×720 plays inside the approval banner and is closed (`DELETE`, 200) when the request ends; the snapshot works once the camera has streamed (before that, the Playground image URL answers 416 — see the friction log). The Playground has no doorbell-press simulation, so "someone rang" uses an on-screen button labelled SIMULATED |
 | How the Ring token reaches the hub | Pasted (masked) into the admin phone's **Ring connection** card; kept in the hub's memory only — never written, logged or echoed. For live view the phone sends only its WebRTC offer; the token stays on the hub |
 | Amazon SNS email + CloudWatch dead-man alarm + least-privilege IAM | **Real deployment** (CloudFormation); ALARM and OK emails received |
-| AWS family relay (Lambda function URL + its own DynamoDB table + a role limited to that table) | **Real deployment** (CloudFormation stack `home-mcp-family-relay`). Tested 2026-10-16 through the live URL: phone enrolled in 3.0 s, request seen by the phone in 0.15 s, approval to door open in 2.4 s, second answer refused (409), removed phone refused |
+| AWS family relay (Lambda function URL + its own DynamoDB table + a role limited to that table) | **Real deployment** (CloudFormation stack `home-mcp-family-relay`). Tested 2026-10-16 with `scripts/e2e_live_relay.mjs` (a scripted phone that signs like the `/family` page) against the live URL, 4 recorded runs: approval to door open 2.4–3.2 s (the hub polls the relay every 3 s); a second answer is refused (409); a removed phone is refused. Also exercised from a real phone in the demo video |
 | Amazon Bedrock daily note | **Real calls** (Converse, `global.anthropic.claude-sonnet-4-5-20250929-v1:0`, through the notifier's least-privilege profile; permission limited to that model). Without Bedrock, or if the note mentions a number not in the day's log, the hub sends the template note |
 | AWS cloud MCP chain: API Gateway, Lambda, Cognito (MFA + PKCE), DynamoDB, KMS, Secrets Manager | **Real deployment** (earlier phase of this project; described below) |
 | Phone pairing, approvals, receipts, timeline, local MCP server, voice notice | **Real**, running on the Mac |
@@ -225,7 +225,7 @@ Deploy `cloud/aws/family-relay/template.json` (parameters: the hub's relay **pub
 ### A6. Voice notice and daily care note (optional)
 
 - `HOME_MCP_VOICE=on` (Chinese: `HOME_MCP_VOICE_LANG=zh`): the Mac speaker says what the hub did for the person at home — door requests and decisions, missed routine steps, outages and recoveries. Fixed sentences only; requester text is never read aloud.
-- Daily care note: deploy the notify stack with `CareSummaryModelArns` (for a global cross-Region profile give both ARNs: `arn:aws:bedrock:<region>:<account>:inference-profile/global.anthropic.claude-sonnet-4-5-20250929-v1:0,arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0`) and start with `HOME_MCP_BEDROCK_MODEL=global.anthropic.claude-sonnet-4-5-20250929-v1:0`. The first use of an Anthropic model in an account needs the Anthropic use case form (Bedrock console) and one call by a principal allowed to subscribe in AWS Marketplace. At `HOME_MCP_SUMMARY_AT` (default 21:00) the hub emails a short note written by Bedrock from the day's facts; without Bedrock, or if the note mentions a number not in the facts, it sends a plain template note and says so.
+- Daily care note: deploy the notify stack with `CareSummaryModelArns` (for a global cross-Region profile give both ARNs: `arn:aws:bedrock:<region>:<account>:inference-profile/global.anthropic.claude-sonnet-4-5-20250929-v1:0,arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0`) and start with `HOME_MCP_BEDROCK_MODEL=global.anthropic.claude-sonnet-4-5-20250929-v1:0`. The first use of an Anthropic model in an account needs the Anthropic use case form (Bedrock console) and one call by a principal allowed to subscribe in AWS Marketplace. At `HOME_MCP_SUMMARY_AT` (default 21:00), or when an admin taps **Send today's care note**, the hub emails a short note written by Bedrock from the day's facts (times, devices, actions, outcomes). Sentences that summarise "everything else" are dropped because the log cannot back them; without Bedrock, or if the note mentions a time or a number not in the facts, it sends a plain template note and says so.
 
 ### B. Ring Developer Playground, read-only (your own Ring developer account)
 
@@ -268,7 +268,7 @@ In the console: pair a device → operator code → **Cognito login** → sign i
 ### Tests
 
 ```bash
-npm test                  # 254 tests: hub, pairing, door approval, live view, family relay, guardian, voice, care note, Ring clients (offline fakes)
+npm test                  # 256 tests: hub, pairing, door approval, live view, family relay, guardian, voice, care note, Ring clients (offline fakes)
 npm run eval              # 30 simulated days of outages, blips and routine steps (numbers above)
 npm run stress            # 8 stress scenarios against the real server with a deliberately failing fake cloud
 npm run test:mac-worker   # Mac worker: keygen, PKCE, signed fetch/receipt, home_device flow against a fake cloud

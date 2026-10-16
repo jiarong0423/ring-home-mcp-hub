@@ -2,7 +2,7 @@
 // whenever Bedrock is off, fails, or mentions a number that is not in the facts.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDayFacts, createCareSummary, createDayLog, onlyKnownNumbers, templateSummary } from '../src/care_summary.mjs';
+import { buildDayFacts, createCareSummary, createDayLog, dropUnbackedSentences, onlyKnownNumbers, templateSummary } from '../src/care_summary.mjs';
 
 const ev = (time, kind, target, params = {}) => ({ at: `2026-10-16T${time}:00`, time, kind, target, params });
 const DAY = [
@@ -17,9 +17,9 @@ const DAY = [
 
 test('facts and template: missed steps, outages, door outcomes; no snapshot or token fields exist', () => {
   const f = buildDayFacts(DAY, { date: '2026-10-16' });
-  assert.deepEqual(f, { date: '2026-10-16', routine: { done: 1, missed: [{ time: '09:00', device: 'dehumidifier', reason: 'gateway offline' }] },
+  assert.deepEqual(f, { date: '2026-10-16', routine: { done: 1, missed: [{ time: '09:00', device: 'dehumidifier', action: 'turn on', reason: 'gateway offline' }] },
     outages: [{ device: 'home gateway', from: '09:00', to: '09:20' }], door: [{ time: '10:03', asked: 'Ring doorbell', outcome: 'approved', decidedBy: 'Amy (remote)' }], doorbellRepeats: 1 });
-  assert.equal(templateSummary(f), '1 routine steps ran; 1 did not: 09:00 dehumidifier (gateway offline). Outages: home gateway 09:00–09:20. Front door: 10:03 Ring doorbell → approved by Amy (remote).');
+  assert.equal(templateSummary(f), '1 routine steps ran; 1 did not: 09:00 dehumidifier turn on (gateway offline). Outages: home gateway 09:00–09:20. Front door: 10:03 Ring doorbell → approved by Amy (remote).');
   assert.equal(onlyKnownNumbers('At 9:00 the dehumidifier did not start; the gateway was back by 9:20.', f), true);
   assert.equal(onlyKnownNumbers('She took 3 walks.', f), false);
   const log = createDayLog({ clock: () => Date.parse('2026-10-16T12:00:00') });
@@ -54,4 +54,11 @@ test('Bedrock: Converse via the CLI with argv (no shell), facts only; ungrounded
   assert.equal((await care.write(facts)).reason, 'BEDROCK_OUTPUT_INVALID');
   assert.equal(logs.filter((l) => l.startsWith('ERROR care summary')).length, 3);
   assert.equal(care.status().last.source, 'template');
+});
+
+test('unbacked "everything else was fine" sentences are removed before sending; real sentences stay', () => {
+  assert.equal(dropUnbackedSentences('The light did not turn off at 09:00. At 10:00 Amy approved the AI agent. Everything else worked normally today.'),
+    'The light did not turn off at 09:00. At 10:00 Amy approved the AI agent.');
+  assert.equal(dropUnbackedSentences('Otherwise, it was a quiet day with no other issues to report.'), '');
+  assert.equal(dropUnbackedSentences('The gateway was offline from 09:00 to 09:20.'), 'The gateway was offline from 09:00 to 09:20.');
 });

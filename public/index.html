@@ -133,6 +133,8 @@
     [hidden] { display: none !important; }
     body[data-role="member"] .admin-only { display: none; }
     body:not([data-via="phone"]) .phone-only { display: none; }
+    .care-note { margin-top: 12px; }
+    .care-note-text { margin: 10px 0 4px; padding: 12px 14px; border-radius: 12px; background: #13202b; border: 1px solid #2c4053; line-height: 1.45; }
     .remote-phones li { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
     .guardian { margin-bottom: 24px; }
     .guardian-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
@@ -263,6 +265,11 @@
             <button id="guardian-gateway-off" class="button" type="button" data-i18n="guardian.simGatewayOff"></button>
             <button id="guardian-gateway-on" class="button" type="button" data-i18n="guardian.simGatewayOn"></button>
             <button id="guardian-doorbell" class="button" type="button" data-i18n="guardian.simDoorbell"></button>
+          </div>
+          <div class="admin-only care-note">
+            <button id="guardian-care-note" class="button" type="button" data-i18n="careNote.send"></button>
+            <p id="guardian-care-note-text" class="care-note-text" role="status" aria-live="polite" hidden></p>
+            <p id="guardian-care-note-source" class="hint"></p>
           </div>
         </section>
         <section id="remote-approval" class="panel section-panel admin-only phone-only" aria-labelledby="remote-heading">

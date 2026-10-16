@@ -70,6 +70,7 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
     const lines = {
       offline: [`${en} offline`, `${e.time} ${en} is offline (last heartbeat ${e.params.lastHeartbeat}).`, `${e.time} ${zh}斷線（最後心跳 ${e.params.lastHeartbeat}）。`],
       recovered: [`${en} back online`, `${e.time} ${en} is back online.`, `${e.time} ${zh}已恢復。`],
+      ring_token: ['Ring connection ended', `${e.time} The Ring connection ended (${e.params.reason}). Camera checks now show SIMULATED until a new Ring token is pasted on the admin phone.`, `${e.time} Ring 連線已結束（${e.params.reason}）。攝影機改顯示模擬，直到在管理員手機貼上新的 Ring token。`],
       routine_missed: [`${e.params.scheduled} ${en} not done`, `${e.params.scheduled} ${en} ${act?.[0]} was not done (${e.params.reason}). Open the console to retry.`,
         `${e.params.scheduled} ${zh}${act?.[1]}沒有完成（${e.params.reason}）。可在控制台補做。`],
       // No snapshot and no face hint ever go into an email; the admin looks on the paired phone.
@@ -135,7 +136,8 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
     try {
       const r = await ringStatus();
       if (r.state === 'token_missing' || r.state === 'token_expired') {
-        if (c.source === 'ring') emit('ring_token', 'warn', 'camera', { reason: r.state });
+        // the real Ring link ended (30-minute Playground token): the family is told, never a silent switch to simulation
+        if (c.source === 'ring') emit('ring_token', 'warn', 'camera', { reason: r.state }, { email: true });
         c.source = 'simulated'; c.ring = r.state; c.failures = 0; c.nextSimBeatMs = clock();
         return;
       }

@@ -86,6 +86,19 @@ function schedule() {
   if (!ports()?.role?.()) return;
   timer = setTimeout(async () => { await poll(); schedule(); }, speed > 1 ? 3000 : 30000);
 }
+// Daily care note on demand (admins): the hub writes it from today's log (Amazon Bedrock when configured, else a template)
+// and emails it; the page shows the text and where it came from.
+async function careNote() {
+  const btn = el('guardian-care-note'); btn.disabled = true;
+  el('guardian-care-note-source').textContent = t('careNote.writing');
+  try {
+    const r = await ports().request('/api/guardian/summary', 'POST', {});
+    const box = el('guardian-care-note-text'); box.textContent = r.text; box.hidden = false;
+    el('guardian-care-note-source').textContent = t(r.source === 'bedrock' ? 'careNote.fromBedrock' : 'careNote.fromTemplate', { reason: r.reason ?? '—' })
+      + ' ' + t(r.emailed ? 'careNote.emailed' : 'careNote.notEmailed');
+  } catch (error) { el('guardian-care-note-source').textContent = t('guardian.retryFailed', { reason: error.code || 'ERROR' }); }
+  finally { btn.disabled = false; }
+}
 async function admin(path, body) {
   try { await ports().request(path, 'POST', body); } catch (error) { el('guardian-email').textContent = t('guardian.retryFailed', { reason: error.code || 'ERROR' }); }
   await poll();
@@ -98,6 +111,7 @@ if (root) {
   el('guardian-gateway-off').addEventListener('click', () => admin('/api/edge/online', { online: false }));
   el('guardian-gateway-on').addEventListener('click', () => admin('/api/edge/online', { online: true }));
   el('guardian-doorbell').addEventListener('click', () => admin('/api/door/doorbell-demo', {}));
+  el('guardian-care-note').addEventListener('click', () => { void careNote(); });
   globalThis.addEventListener('home-mcp-session-changed', () => { failures = 0; void poll().then(schedule); });
   globalThis.addEventListener('home-mcp-door-decided', () => { void poll(); });
 }
