@@ -23,7 +23,8 @@ import { createDoorRequests, DoorRequestError } from './door_requests.mjs';
 import { createRingSnapshot, simulatedDoorSnapshot } from './ring_snapshot.mjs';
 import { createRingDoorbell } from './ring_doorbell.mjs';
 import { createRemoteRelay, loadOrCreateRelayKey, relayPublicKeySpki } from './remote_relay.mjs';
-import { createVoiceNotice } from './voice_notice.mjs';
+import { createVoiceNotice, phraseFor } from './voice_notice.mjs';
+import { createRingChime } from './ring_chime.mjs';
 import { createRingLive, RingLiveError } from './ring_live.mjs';
 import { buildDayFacts, createCareSummary, createDayLog } from './care_summary.mjs';
 import { createFaceHint, createFaceStore, createFaceWorker, readFaceConfig, FaceHintError } from './face_hint.mjs';
@@ -322,6 +323,9 @@ function onRingWebhookEvent(e) {
   if (!Number.isFinite(e.at) || Math.abs(Date.now() - e.at) > 120_000) { console.log('ring webhook: event older than 2 minutes, not turned into a door request'); return; }
   doorbellPressed({ simulated: false, at: e.at, kind: person ? 'person' : 'ding' });
 }
+// Ring Chime: sounds in the home at the moments the Mac voice speaks to the person (HOME_MCP_CHIME=on, Ring token loaded).
+const ringChime = createRingChime({ origin: RING_API_ORIGIN, getToken: () => (ringNetworkOff ? null : ringProviderToken),
+  log: (line) => (line.startsWith('ERROR') ? console.error(line) : console.log(line)) });
 // Ring live view on the admin phone's approval banner (WHEP): only while a door request waits; closed when it ends.
 const ringLive = createRingLive({ origin: RING_API_ORIGIN, getToken: () => (ringNetworkOff ? null : ringProviderToken),
   log: (line) => (line.startsWith('ERROR') ? console.error(line) : console.log(line)) });
@@ -350,7 +354,7 @@ const dayLog = createDayLog({ clock: guardianClock.now });
 const careSummary = createCareSummary({ awsBin: resolveAwsCli(process.env.HOME_MCP_AWS_CLI), profile: notifyEnv.profile,
   region: process.env.HOME_MCP_BEDROCK_REGION || notifyEnv.region, modelId: process.env.HOME_MCP_BEDROCK_MODEL,
   log: (line) => console.error(line) });
-const guardian = directEntry && demoMcpEnabled && simulator ? createGuardian({ onEvent: (e) => { voice.onGuardianEvent(e); dayLog.note(e); }, simulator, clock: guardianClock.now,
+const guardian = directEntry && demoMcpEnabled && simulator ? createGuardian({ onEvent: (e) => { if (phraseFor(e)) void ringChime.play(e.kind); voice.onGuardianEvent(e); dayLog.note(e); }, simulator, clock: guardianClock.now,
   ringStatus: process.env.HOME_MCP_RING_PROBE === 'off' ? null : ringCameraStatus, notifier, log: (line) => console.log(line),
   familyUrl: () => (remoteRelay && remoteRelay.status().phones.length > 0 ? `${process.env.HOME_MCP_RELAY_BASE.replace(/\/$/u, '')}/family` : null) }) : null;
 // Daily care summary: written by Bedrock from today's facts (template if Bedrock is off or ungrounded), emailed through SNS.
@@ -1003,7 +1007,7 @@ async function handleApi(req, res, url) {
       }
       assertRingOperationCurrent(lease, req);
       ringProviderToken = clipboardValue;
-      ringTokenGeneration += 1;
+      ringTokenGeneration += 1; ringChime.forget();
       clipboardValue = undefined;
       json(res, 200, {
         ok: true,
@@ -1421,7 +1425,7 @@ async function handleRingToken(req, res, url, entry) {
   body.token = undefined;
   if (!validRingProviderToken(value)) throw fail(422, 'RING_TOKEN_INVALID', 'That does not look like a Ring access token');
   ringProviderToken = value; value = undefined;
-  ringTokenLoadedAt = Date.now(); ringTokenGeneration += 1;
+  ringTokenLoadedAt = Date.now(); ringTokenGeneration += 1; ringChime.forget();
   console.log(`ring token: loaded into memory from the console${entry.via === 'phone' ? ` (phone "${entry.name}")` : ''}; real Ring calls on, about ${RING_PLAYGROUND_TOKEN_MINUTES} minutes`);
   guardian?.probeRingNow();
   void ringDoorbell.poll();
@@ -2125,6 +2129,7 @@ if (directEntry) {
     }
     if (guardian) console.log(`Care summary: daily at ${SUMMARY_AT} (guardian clock), ${careSummary.status().bedrock === 'configured' ? `Bedrock ${careSummary.status().modelId}` : 'template only (HOME_MCP_BEDROCK_MODEL not set)'}.`);
     if (guardian) console.log(`Voice notice for the person at home: ${voice.status().enabled ? `on (${voice.status().lang}, Mac speaker)` : 'off (HOME_MCP_VOICE=on to enable)'}.`);
+    if (guardian) console.log(`Ring Chime: ${ringChime.status().enabled ? 'on (sounds before the Mac voice when a Ring token is loaded and a Chime is found; Mac only otherwise)' : 'off (HOME_MCP_CHIME=on to enable)'}.`);
     if (remoteRelay) console.log(`Remote approval: via ${new URL(process.env.HOME_MCP_RELAY_BASE).host} (relay public key, pin as FamilyRelayMacKeySpki: ${relayKeySpki}).`);
     if (remoteRelay) console.log(`Ring webhooks: ${process.env.HOME_MCP_RING_WEBHOOKS === 'on' ? 'pulled from the relay every 10 s (Ring posts to /ring/webhook)' : 'off (HOME_MCP_RING_WEBHOOKS=on to pull them from the relay)'}.`);
     if (doors) console.log(`Ring doorbell: ${ringProviderToken && !ringNetworkOff ? 'watching Ring event history every 10 s for doorbell presses and a person at the door (it asks the admin phone; it never opens the door)' : ringNetworkOff ? 'off (HOME_MCP_RING_PROBE=off)' : 'waiting for a Playground token (paste it in the console: Ring connection)'}; the admin can also ring a simulated doorbell.`);
