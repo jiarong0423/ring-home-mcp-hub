@@ -328,7 +328,7 @@ test('server D1–D12: agent / family ask, only the admin phone (with its own cr
   const summary = await call(server, '/api/guardian/summary', { method: 'POST', bearer: admin.bearer, body: {} });
   assert.equal(summary.status, 200, summary.raw); assert.equal(summary.body.source, 'template'); assert.equal(summary.body.reason, 'BEDROCK_NOT_CONFIGURED');
   assert.deepEqual(summary.body.facts.door.map((d) => d.outcome), ['approved', 'denied', 'failed', 'approved']);
-  assert.match(summary.body.text, /Front door: .*Ring doorbell → approved by Me/u);
+  assert.match(summary.body.text, /Front door: .*Ring doorbell asked at \d{2}:\d{2}, approved at \d{2}:\d{2} by Me/u);
   assert.match(server.stdout, /care summary \(on request\): template BEDROCK_NOT_CONFIGURED; email not sent \(NOTIFY_DISABLED\)/u);
 });
 

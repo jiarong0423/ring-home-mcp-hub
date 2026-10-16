@@ -18,8 +18,8 @@ const DAY = [
 test('facts and template: missed steps, outages, door outcomes; no snapshot or token fields exist', () => {
   const f = buildDayFacts(DAY, { date: '2026-10-16' });
   assert.deepEqual(f, { date: '2026-10-16', routine: { done: 1, missed: [{ time: '09:00', device: 'dehumidifier', action: 'turn on', reason: 'gateway offline' }] },
-    outages: [{ device: 'home gateway', from: '09:00', to: '09:20' }], door: [{ time: '10:03', asked: 'Ring doorbell', outcome: 'approved', decidedBy: 'Amy (remote)' }], doorbellRepeats: 1 });
-  assert.equal(templateSummary(f), '1 routine steps ran; 1 did not: 09:00 dehumidifier turn on (gateway offline). Outages: home gateway 09:00–09:20. Front door: 10:03 Ring doorbell → approved by Amy (remote).');
+    outages: [{ device: 'home gateway', from: '09:00', to: '09:20' }], door: [{ askedAt: '10:02', time: '10:03', asked: 'Ring doorbell', outcome: 'approved', decidedBy: 'Amy (remote)' }], doorbellRepeats: 1 });
+  assert.equal(templateSummary(f), '1 routine steps ran; 1 did not: 09:00 dehumidifier turn on (gateway offline). Outages: home gateway 09:00–09:20. Front door: Ring doorbell asked at 10:02, approved at 10:03 by Amy (remote).');
   assert.equal(onlyKnownNumbers('At 9:00 the dehumidifier did not start; the gateway was back by 9:20.', f), true);
   assert.equal(onlyKnownNumbers('She took 3 walks.', f), false);
   const log = createDayLog({ clock: () => Date.parse('2026-10-16T12:00:00') });
@@ -61,4 +61,12 @@ test('unbacked "everything else was fine" sentences are removed before sending; 
     'The light did not turn off at 09:00. At 10:00 Amy approved the AI agent.');
   assert.equal(dropUnbackedSentences('Otherwise, it was a quiet day with no other issues to report.'), '');
   assert.equal(dropUnbackedSentences('The gateway was offline from 09:00 to 09:20.'), 'The gateway was offline from 09:00 to 09:20.');
+});
+
+test('a missed step that the family later ran is marked with the time it was made up', () => {
+  const f = buildDayFacts([ev('09:00', 'routine_missed', 'living_light', { scheduled: '09:00', action: 'off', reason: 'gateway offline' }),
+    ev('09:30', 'routine_done', 'living_light', { scheduled: '09:00', action: 'off' })], { date: '2026-10-16' });
+  assert.deepEqual(f.routine.missed, [{ time: '09:00', device: 'living room light', action: 'turn off', reason: 'gateway offline', madeUpAt: '09:30' }]);
+  assert.match(templateSummary(f), /09:00 living room light turn off \(gateway offline\), done at 09:30 when the family asked/u);
+  assert.equal(onlyKnownNumbers('The 9:00 light step was done at 9:30.', f), true);
 });

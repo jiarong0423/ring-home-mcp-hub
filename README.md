@@ -268,7 +268,7 @@ In the console: pair a device → operator code → **Cognito login** → sign i
 ### Tests
 
 ```bash
-npm test                  # 256 tests: hub, pairing, door approval, live view, family relay, guardian, voice, care note, Ring clients (offline fakes)
+npm test                  # 257 tests: hub, pairing, door approval, live view, family relay, guardian, voice, care note, Ring clients (offline fakes)
 npm run eval              # 30 simulated days of outages, blips and routine steps (numbers above)
 npm run stress            # 8 stress scenarios against the real server with a deliberately failing fake cloud
 npm run test:mac-worker   # Mac worker: keygen, PKCE, signed fetch/receipt, home_device flow against a fake cloud

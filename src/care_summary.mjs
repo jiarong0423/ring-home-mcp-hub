@@ -24,16 +24,23 @@ export function createDayLog({ clock = Date.now } = {}) {
 
 export function buildDayFacts(events, { date = null } = {}) {
   const facts = { date, routine: { done: 0, missed: [] }, outages: [], door: [], doorbellRepeats: 0 };
-  const open = {};
+  const open = {}; let askedAt = null;
   for (const e of events) {
     const p = e.params ?? {};
-    if (e.kind === 'routine_done') facts.routine.done += 1;
+    if (e.kind === 'routine_done') {
+      facts.routine.done += 1;
+      // a step that was missed and later run because a family member tapped "Do it now"
+      const missed = facts.routine.missed.find((m) => m.time === p.scheduled && m.device === (DEVICE[e.target] ?? e.target) && !m.madeUpAt);
+      if (missed) missed.madeUpAt = e.time;
+    }
     else if (e.kind === 'routine_missed') facts.routine.missed.push({ time: p.scheduled, device: DEVICE[e.target] ?? e.target, action: ACTION[p.action] ?? p.action ?? 'run', reason: p.reason ?? 'unknown' });
     else if (e.kind === 'offline') open[e.target] = { device: DEVICE[e.target] ?? e.target, from: e.time, to: null };
     else if (e.kind === 'recovered' && open[e.target]) { open[e.target].to = e.time; facts.outages.push(open[e.target]); delete open[e.target]; }
-    else if (e.kind.startsWith('door_') && e.kind !== 'door_requested') {
-      facts.door.push({ time: e.time, asked: p.requesterKind === 'ring' ? 'Ring doorbell' : p.requesterKind === 'mcp' ? 'AI agent' : p.requesterKind === 'phone' ? 'family phone' : 'console',
+    else if (e.kind === 'door_requested') askedAt = e.time;
+    else if (e.kind.startsWith('door_')) {
+      facts.door.push({ askedAt, time: e.time, asked: p.requesterKind === 'ring' ? 'Ring doorbell' : p.requesterKind === 'mcp' ? 'AI agent' : p.requesterKind === 'phone' ? 'family phone' : 'console',
         outcome: e.kind.slice(5), decidedBy: p.approver ?? null });
+      askedAt = null;
     } else if (e.kind === 'doorbell_again') facts.doorbellRepeats += 1;
   }
   facts.outages.push(...Object.values(open));   // still down at summary time (to: null)
@@ -43,11 +50,11 @@ export function buildDayFacts(events, { date = null } = {}) {
 export function templateSummary(f) {
   const lines = [];
   lines.push(f.routine.missed.length === 0 ? `All ${f.routine.done} routine steps ran as planned.`
-    : `${f.routine.done} routine steps ran; ${f.routine.missed.length} did not: ${f.routine.missed.map((m) => `${m.time} ${m.device} ${m.action} (${m.reason})`).join('; ')}.`);
+    : `${f.routine.done} routine steps ran; ${f.routine.missed.length} did not: ${f.routine.missed.map((m) => `${m.time} ${m.device} ${m.action} (${m.reason})${m.madeUpAt ? `, done at ${m.madeUpAt} when the family asked` : ''}`).join('; ')}.`);
   lines.push(f.outages.length === 0 ? 'No device went offline.'
     : `Outages: ${f.outages.map((o) => `${o.device} ${o.from}–${o.to ?? 'still offline'}`).join('; ')}.`);
   lines.push(f.door.length === 0 ? 'Nobody asked to open the front door.'
-    : `Front door: ${f.door.map((d) => `${d.time} ${d.asked} → ${d.outcome}${d.decidedBy ? ` by ${d.decidedBy}` : ''}`).join('; ')}.`);
+    : `Front door: ${f.door.map((d) => `${d.askedAt ? `${d.asked} asked at ${d.askedAt}, ` : `${d.asked}: `}${d.outcome} at ${d.time}${d.decidedBy ? ` by ${d.decidedBy}` : ''}`).join('; ')}.`);
   return lines.join(' ');
 }
 
