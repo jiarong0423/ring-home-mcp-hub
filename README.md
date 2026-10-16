@@ -6,7 +6,7 @@
 
 Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring track**, plus the **AWS Builder** and **Open Source** mini challenges. (Repository name: `ring-home-mcp-hub`.)
 
-- Demo video (under 3 minutes): _link added after upload_ (earlier version: https://youtu.be/_DTcUaVQPgE)
+- Demo video (2:45): https://youtu.be/DylHJyeC6S0
 - License: MIT
 - Open-source companion: [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox), the same webhook receiver as in [A5](#a5-approve-from-anywhere-aws-family-relay-optional), extracted as its own MIT project with a simple pull API (`POST /pull`), for any hub without a public address
 
