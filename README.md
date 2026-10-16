@@ -238,10 +238,27 @@ Deploy `cloud/aws/family-relay/template.json` (parameters: the hub's relay **pub
 - `HOME_MCP_VOICE=on` (Chinese: `HOME_MCP_VOICE_LANG=zh`): the Mac speaker says what the hub did for the person at home — door requests and decisions, missed routine steps, outages and recoveries. Fixed sentences only; requester text is never read aloud.
 - Daily care note: deploy the notify stack with `CareSummaryModelArns` (for a global cross-Region profile give both ARNs: `arn:aws:bedrock:<region>:<account>:inference-profile/global.anthropic.claude-sonnet-4-5-20250929-v1:0,arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0`) and start with `HOME_MCP_BEDROCK_MODEL=global.anthropic.claude-sonnet-4-5-20250929-v1:0`. The first use of an Anthropic model in an account needs the Anthropic use case form (Bedrock console) and one call by a principal allowed to subscribe in AWS Marketplace. At `HOME_MCP_SUMMARY_AT` (default 21:00), or when an admin taps **Send today's care note**, the hub emails a short note written by Bedrock from the day's facts (times, devices, actions, outcomes). Sentences that summarise "everything else" are dropped because the log cannot back them; without Bedrock, or if the note mentions a time or a number not in the facts, it sends a plain template note and says so.
 
+### A7. Other home devices: what an AI agent may do on its own, vacuum reports, a real gateway (optional)
+
+- **Tiered permissions for AI agents** (`src/agent_policy.mjs`). An MCP client may run low-risk actions inside the family's limits at once; everything else is refused before it reaches a device and shows on the guardian timeline ("an AI agent asked for … ; refused"). Family phones are not limited. The refusal returns the whole policy, so an agent can stay inside it.
+
+  | Device | AI agent may do on its own | Family only | Ask (a trusted phone decides) |
+  |---|---|---|---|
+  | Living room light | on, off | | |
+  | Air conditioner | on, off, temperature 24–28 °C | other temperatures | |
+  | Dehumidifier | on, off, target 40–60 % | other targets | |
+  | Robot vacuum | start 08:00–20:00, pause, dock | start at night | |
+  | Alarm clock | set between 05:00 and 10:00 | other times, clear | |
+  | Ring camera (simulated arm state) | arm | disarm | |
+  | Front door (SIMULATED) | lock | | unlock |
+
+- **The robot vacuum reports back** (SIMULATED). A run started from anywhere (console, family phone, AI agent) is followed to one result: done and back on the dock (with a receipt), needs help (stuck or battery low: one email), or cannot confirm (the gateway was down when it should have reported) — never assumed done. **Demo: vacuum gets stuck** on the guardian panel shows the alert.
+- **A real home gateway on USB** (`HOME_MCP_USB_GATEWAY=on`, `firmware/home_gateway`). An ESP32-C3 sends one heartbeat a minute over USB (no Wi-Fi, no credentials; the hub still listens on 127.0.0.1 only), so unplugging it is a real outage: late after 3 min, offline after 5 min, one email each way. Its BOOT button is the parent's button: a short press says "I'm OK" (timeline), a long press asks the family for help (email and voice notice). The hub only uses a board that says hello with the id `hmg-home-gateway`; any other USB serial device is asked once for its identity and closed. Build and flash: `arduino-cli compile --fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc firmware/home_gateway`, then `arduino-cli upload -p /dev/cu.usbmodem<N> --fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc firmware/home_gateway`. Not yet run on a board in this repository's tests (the serial path is tested with fake ports).
+
 ### Tests
 
 ```bash
-npm test                  # 266 tests (2 face-hint tests skip when the models are absent): hub, pairing, door approval, live view, family relay, Ring webhooks, Ring Chime, guardian, email alerts, voice, care note, Ring clients (offline fakes)
+npm test                  # 275 tests (2 face-hint tests skip when the models are absent): hub, pairing, door approval, live view, family relay, Ring webhooks, Ring Chime, guardian, AI permissions, vacuum reports, USB gateway, email alerts, voice, care note, Ring clients (offline fakes)
 npm run eval              # 30 simulated days of outages, blips and routine steps (numbers above)
 npm run stress            # 8 stress scenarios against the real server with a deliberately failing fake cloud
 npm run test:mac-worker   # 40 tests, earlier phase only: the Mac worker of the cloud MCP chain (against a fake cloud)

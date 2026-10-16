@@ -22,13 +22,14 @@ export const DEFAULT_TIMING = Object.freeze({
   gatewayOfflineMs: 5 * 60_000,   // 5 minutes -> "offline" (alert)
   cameraIntervalMs: 5 * 60_000,   // camera checked every 5 minutes
   cameraFailures: 2,              // two missed / failed checks in a row -> camera offline (alert)
-  routineWindowMs: 60 * 60_000    // a routine item older than this when first seen is "not monitored", never run late
+  routineWindowMs: 60 * 60_000,   // a routine item older than this when first seen is "not monitored", never run late
+  vacuumRunMs: 40 * 60_000        // a simulated cleaning run lasts 40 minutes on the guardian clock, then reports back
 });
 
 const DEVICE_NAMES = Object.freeze({
   living_light: ['Living room light', '客廳燈'], dehumidifier: ['Dehumidifier', '除濕機'], air_conditioner: ['Air conditioner', '冷氣'],
   alarm_clock: ['Alarm clock', '鬧鐘'], camera: ['Ring camera', 'Ring 攝影機'], gateway: ['Home gateway', '家中閘道'],
-  front_door: ['Front door', '前門']
+  front_door: ['Front door', '前門'], robot_vacuum: ['Robot vacuum', '掃地機'], home_button: ['Home button', '家中按鈕']
 });
 const ACTION_NAMES = Object.freeze({ on: ['on', '開'], off: ['off', '關'], set_alarm: ['set alarm', '設定鬧鐘'] });
 const pad = (n) => String(n).padStart(2, '0');
@@ -45,11 +46,12 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
   const events = [];
   let seq = 0;
   const targets = {
-    gateway: { state: 'online', lastHeartbeatMs: clock(), nextBeatMs: clock() },
+    gateway: { state: 'online', lastHeartbeatMs: clock(), nextBeatMs: clock(), source: 'simulated', lastRealBeat: 0 },
     camera: { state: 'online', lastHeartbeatMs: clock(), source: 'simulated', failures: 0, simulatedOnline: true, nextCheckReal: 0,
       nextSimBeatMs: clock(), ring: 'not_configured' }
   };
   const runs = new Map();   // `${day}:${id}` -> run
+  let vacuum = null;        // { startedAt, dueAt, origin, fault } while a cleaning run is in progress
   let currentDay = dayKey(clock());
   let ringInFlight = false;
 
@@ -78,7 +80,10 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
         `${e.time} 有人按了 Ring 門鈴。請在 60 秒內到管理員手機看門口照片，再核准或拒絕（門鎖為模擬）。`] : ['Door unlock requested', `${e.time} "${e.params.requester}" asked to open the front door (SIMULATED). Approve or deny on the admin phone within 60 s.`,
         `${e.time}「${e.params.requester}」請求開前門（模擬）。請在 60 秒內到管理員手機核准或拒絕。`],
       door_approved: ['Door opened (SIMULATED)', `${e.time} The front door was opened (SIMULATED) for "${e.params.requester}", approved by "${e.params.approver}". Receipt ${e.params.receipt}.`,
-        `${e.time} 前門已開（模擬），申請者「${e.params.requester}」，核准者「${e.params.approver}」。收據 ${e.params.receipt}。`]
+        `${e.time} 前門已開（模擬），申請者「${e.params.requester}」，核准者「${e.params.approver}」。收據 ${e.params.receipt}。`],
+      parent_help: ['Help button pressed at home', `${e.time} The help button at home was held down. Please call or check in now.`, `${e.time} 家中的求助按鈕被長按。請現在打電話或去看看。`],
+      vacuum_stuck: ['Robot vacuum needs help', `${e.time} The robot vacuum stopped (${e.params.reason}) after ${e.params.minutes} min. It is SIMULATED; send it home from the console.`,
+        `${e.time} 掃地機停住了（${e.params.reason}），已掃 ${e.params.minutes} 分鐘。掃地機為模擬，可在控制台叫它回充電座。`]
     }[e.kind] ?? [e.kind, e.kind, e.kind];
     // Away from home: a family phone enabled for remote approval answers on the relay page (the link carries no code or token).
     const remote = e.kind === 'door_requested' ? familyUrl() : null;
@@ -101,6 +106,11 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
   // per interval while the simulated gateway is up. The simulator itself keeps real time, so codes and TTLs are unaffected.
   function checkGateway(now) {
     const g = targets.gateway;
+    if (g.source === 'usb') {   // a real gateway on USB: real heartbeats, aged on the real clock (an accelerated demo cannot age them)
+      const age = realClock() - g.lastRealBeat;
+      transition('gateway', age >= timing.gatewayOfflineMs ? 'offline' : age >= timing.gatewayLateMs ? 'late' : 'online', { source: 'usb' });
+      return;
+    }
     const up = simulator.getState().edge.online === true;
     // A gateway reports right away when it reconnects, then every interval.
     if (up && g.wasUp === false) { g.lastHeartbeatMs = now; g.nextBeatMs = now + timing.gatewayIntervalMs; }
@@ -191,11 +201,32 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
     }
   }
 
+  // A cleaning run ends in exactly one report: done (back on the dock, with a receipt), needs help (stuck / battery), or
+  // cannot confirm (the gateway was down when it should have reported). Nothing is assumed finished.
+  function checkVacuum(now) {
+    if (!vacuum) return;
+    const minutes = Math.max(1, Math.round((now - vacuum.startedAt) / 60_000));
+    if (vacuum.fault) {
+      emit('vacuum_stuck', 'alert', 'robot_vacuum', { reason: vacuum.fault, minutes }, { email: true });
+      vacuum = null; return;
+    }
+    if (now < vacuum.dueAt) return;
+    if (targets.gateway.state !== 'online' || simulator.getState().edge.online !== true) {
+      emit('vacuum_unknown', 'warn', 'robot_vacuum', { reason: 'GATEWAY_OFFLINE', minutes }); vacuum = null; return;
+    }
+    let result = null;
+    try { result = simulator.perform({ actor: 'owner', deviceId: 'robot_vacuum', action: 'dock', origin: 'routine', immediateOnly: true }); } catch { result = null; }
+    if (result?.status === 'simulated_applied') emit('vacuum_done', 'info', 'robot_vacuum', { minutes, receipt: typeof result.commandId === 'string' ? result.commandId.slice(0, 12) : null });
+    else emit('vacuum_unknown', 'warn', 'robot_vacuum', { reason: result?.code ?? 'NO_RECEIPT', minutes });
+    vacuum = null;
+  }
+
   function tick() {
     const now = clock();
     checkGateway(now);
     checkCamera(now);
     checkRoutine(now);
+    checkVacuum(now);
     void probeRing();
   }
 
@@ -247,6 +278,38 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
 
   function noteDoorbellAgain() { return emit('doorbell_again', 'info', 'front_door', { requesterKind: 'ring' }); }
 
+  // The real home gateway (ESP32-C3 on USB, src/usb_gateway.mjs): every heartbeat line counts, on the real clock.
+  function noteUsbGateway({ beat }) {
+    if (beat !== true) return { ok: false };
+    const g = targets.gateway;
+    g.source = 'usb'; g.lastRealBeat = realClock(); g.lastHeartbeatMs = clock();
+    transition('gateway', 'online', { source: 'usb' });
+    return { ok: true, state: g.state };
+  }
+  // The parent's button on the gateway: a short press says "I'm OK" (timeline), a long press asks for help (email).
+  function noteButton({ press }) {
+    if (press === 'long') return emit('parent_help', 'alert', 'home_button', { press }, { email: true });
+    if (press === 'short') return emit('parent_ok', 'info', 'home_button', { press });
+    return null;
+  }
+  // An AI agent tried something outside its limits (src/agent_policy.mjs). Nothing ran; the family can see it was asked.
+  function noteAgentRefused({ deviceId, action, reason }) {
+    return emit('agent_refused', 'info', DEVICE_NAMES[deviceId] ? deviceId : 'front_door', { action: String(action).slice(0, 32), reason: String(reason).slice(0, 40) });
+  }
+  // A cleaning run started (any origin: family, AI agent, schedule). Only one at a time; the last start wins.
+  function noteVacuumStart({ origin }) {
+    const now = clock();
+    vacuum = { startedAt: now, dueAt: now + timing.vacuumRunMs, origin: String(origin ?? 'unknown').slice(0, 16), fault: null };
+    emit('vacuum_started', 'info', 'robot_vacuum', { origin: vacuum.origin });
+    return { ok: true };
+  }
+  // Demo / test only: make the running vacuum report a problem at the next tick.
+  function setVacuumFault({ fault }) {
+    if (!vacuum) return { ok: false, code: 'VACUUM_NOT_RUNNING' };
+    if (!['stuck', 'battery_low'].includes(fault)) return { ok: false, code: 'INVALID_ARGUMENT' };
+    vacuum.fault = fault; return { ok: true };
+  }
+
   function status() {
     const now = clock();
     const today = routine.map((item) => {
@@ -258,7 +321,8 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
       + (targets.gateway.state !== 'online' ? 1 : 0) + (targets.camera.state !== 'online' ? 1 : 0);
     return {
       now: new Date(now).toISOString(), time: hhmm(now), overall: problems === 0 ? 'ok' : 'attention', attention: problems,
-      gateway: { state: targets.gateway.state, lastHeartbeat: hhmm(targets.gateway.lastHeartbeatMs) },
+      gateway: { state: targets.gateway.state, lastHeartbeat: hhmm(targets.gateway.lastHeartbeatMs), source: targets.gateway.source },
+      vacuum: vacuum ? { running: true, startedAt: hhmm(vacuum.startedAt), dueAt: hhmm(vacuum.dueAt), origin: vacuum.origin } : { running: false },
       camera: { state: targets.camera.state, lastHeartbeat: hhmm(targets.camera.lastHeartbeatMs), source: targets.camera.source,
         ring: targets.camera.ring, simulatedOnline: targets.camera.simulatedOnline },
       routine: { today, done: today.filter((r) => r.result === 'confirmed').length, total: today.length },
@@ -268,5 +332,6 @@ export function createGuardian({ simulator, clock = Date.now, realClock = Date.n
   }
   // A new Ring token was just handed over: check the real camera now instead of waiting for the next 5-minute slot.
   function probeRingNow() { targets.camera.nextCheckReal = 0; return probeRing(); }
-  return Object.freeze({ tick, status, retry, setSimulatedCamera, noteGateway, noteRingDevice, probeRing, probeRingNow, noteDoor, noteDoorbellAgain });
+  return Object.freeze({ tick, status, retry, setSimulatedCamera, noteGateway, noteRingDevice, probeRing, probeRingNow, noteDoor, noteDoorbellAgain,
+    noteUsbGateway, noteButton, noteAgentRefused, noteVacuumStart, setVacuumFault });
 }

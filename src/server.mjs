@@ -29,6 +29,8 @@ import { createRingLive, RingLiveError } from './ring_live.mjs';
 import { buildDayFacts, createCareSummary, createDayLog } from './care_summary.mjs';
 import { createFaceHint, createFaceStore, createFaceWorker, readFaceConfig, FaceHintError } from './face_hint.mjs';
 import { createSnsNotifier, resolveAwsCli } from './notify_sns.mjs';
+import { decideAgentAction, describeAgentPolicy } from './agent_policy.mjs';
+import { createUsbGateway } from './usb_gateway.mjs';
 import {
   assertAssemblyRouteAllowed,
   createExecutableServerAssembly,
@@ -357,6 +359,18 @@ const careSummary = createCareSummary({ awsBin: resolveAwsCli(process.env.HOME_M
 const guardian = directEntry && demoMcpEnabled && simulator ? createGuardian({ onEvent: (e) => { if (phraseFor(e)) void ringChime.play(e.kind); voice.onGuardianEvent(e); dayLog.note(e); }, simulator, clock: guardianClock.now,
   ringStatus: process.env.HOME_MCP_RING_PROBE === 'off' ? null : ringCameraStatus, notifier, log: (line) => console.log(line),
   familyUrl: () => (remoteRelay && remoteRelay.status().phones.length > 0 ? `${process.env.HOME_MCP_RELAY_BASE.replace(/\/$/u, '')}/family` : null) }) : null;
+// The real home gateway on USB (HOME_MCP_USB_GATEWAY=on, firmware/home_gateway): its heartbeats drive the guardian's gateway
+// state and the simulator's device path; unplugging it is a real outage (late after 3 min, offline after 5 min, one email).
+const usbGateway = createUsbGateway({ log: (line) => console.log(line),
+  onHello: () => { guardian?.noteUsbGateway({ beat: true }); if (simulator.getState().edge.online !== true) simulator.setEdgeOnline({ actor: 'owner', online: true }); },
+  onBeat: () => { guardian?.noteUsbGateway({ beat: true }); if (simulator.getState().edge.online !== true) simulator.setEdgeOnline({ actor: 'owner', online: true }); },
+  onButton: ({ press }) => { guardian?.noteButton({ press }); },
+  onLost: () => { try { simulator.setEdgeOnline({ actor: 'owner', online: false }); } catch { /* simulator gone */ } } });
+// A vacuum run started from anywhere (console, family phone, AI agent) is followed until it reports back (src/guardian.mjs).
+const vacuumStarted = (deviceId, action, result, origin) => {
+  if (deviceId === 'robot_vacuum' && action === 'start' && result?.status === 'simulated_applied') guardian?.noteVacuumStart({ origin });
+  return result;
+};
 // Daily care summary: written by Bedrock from today's facts (template if Bedrock is off or ungrounded), emailed through SNS.
 const SUMMARY_AT = /^\d{2}:\d{2}$/u.test(process.env.HOME_MCP_SUMMARY_AT ?? '') ? process.env.HOME_MCP_SUMMARY_AT : '21:00';
 // Started after today's summary time: wait for tomorrow (a restart never re-sends today's note).
@@ -1169,7 +1183,7 @@ async function handleApi(req, res, url) {
       throw fail(403, 'MEMBER_ACTION_FORBIDDEN', 'Camera disarm is admin-only');
     }
     if (sessionEntry.via === 'phone') console.log(`phone "${sessionEntry.name}" action ${String(body.deviceId).replace(/[^a-z_]/gu, '?').slice(0, 32)} ${String(body.action).replace(/[^a-z_]/gu, '?').slice(0, 32)}`);
-    json(res, 200, simulator.perform({
+    json(res, 200, vacuumStarted(body.deviceId, body.action, simulator.perform({
       actor,
       deviceId: body.deviceId,
       action: body.action,
@@ -1177,7 +1191,7 @@ async function handleApi(req, res, url) {
       confirmationId: body.confirmationId,
       confirmationPhrase: body.confirmationPhrase,
       origin: 'ui',
-    }));
+    }), sessionEntry.via === 'phone' ? 'phone' : 'console'));
     return;
   }
   if (url.pathname === '/api/edge/online' && req.method === 'POST') {
@@ -1249,6 +1263,12 @@ async function handleGuardian(req, res, url, entry) {
     if (entry.role !== 'admin') throw fail(403, 'ADMIN_REQUIRED', 'Admin required');
     if (Object.keys(body).join(',') !== 'online' || typeof body.online !== 'boolean') throw fail(400, 'INVALID_ARGUMENT', 'Only online:boolean is accepted');
     json(res, 200, guardian.setSimulatedCamera({ online: body.online }));
+    return;
+  }
+  if (url.pathname === '/api/guardian/vacuum-fault') {   // demo: the SIMULATED vacuum reports stuck / battery low
+    if (entry.role !== 'admin') throw fail(403, 'ADMIN_REQUIRED', 'Admin required');
+    if (Object.keys(body).join(',') !== 'fault' || typeof body.fault !== 'string') throw fail(400, 'INVALID_ARGUMENT', 'Only fault:string is accepted');
+    json(res, 200, guardian.setVacuumFault({ fault: body.fault }));
     return;
   }
   throw fail(404, 'NOT_FOUND', 'Route not found');
@@ -1857,8 +1877,27 @@ async function handleMcp(req, res) {
       json(res, 200, rpcError(body.id, -32003, 'Camera disarm is admin-only'));
       return;
     }
+    // Tiered permissions for AI agents (src/agent_policy.mjs): low-risk actions inside the family's limits run at once;
+    // anything else is refused here, before the simulator, and shown on the guardian timeline. Family phones are not limited.
+    if (sessionEntry.via !== 'phone' && typeof toolName === 'string' && toolName.startsWith('device_')) {
+      const args = body.params?.arguments;
+      const commands = toolName === 'device_batch' ? (Array.isArray(args?.commands) ? args.commands : [])
+        : [{ deviceId: toolName.slice(7), action: toolAction, parameters: args?.parameters }];
+      const now = new Date(guardianClock.now()); const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const refused = commands.map((c) => ({ deviceId: String(c?.deviceId ?? ''), action: String(c?.action ?? ''), ...decideAgentAction({ deviceId: c?.deviceId, action: c?.action, parameters: c?.parameters, now: hhmm }) }))
+        .filter((d) => !d.allowed);
+      if (refused.length > 0) {
+        for (const r of refused) guardian?.noteAgentRefused({ deviceId: r.deviceId, action: r.action, reason: r.reason });
+        json(res, 200, rpcToolResult(body.id, { status: 'refused_by_policy', simulated: true, time: hhmm,
+          refused: refused.map(({ allowed, ...r }) => r), policy: describeAgentPolicy(),
+          note: 'Nothing was run. Ask a family member, or stay inside the limits in `policy`.' }));
+        return;
+      }
+    }
     if (sessionEntry.via === 'phone') console.log(`phone "${sessionEntry.name}" mcp ${String(toolName).replace(/[^a-z_]/gu, '?').slice(0, 40)} ${String(toolAction).replace(/[^a-z_]/gu, '?').slice(0, 32)}`);
-    json(res, 200, await mcpProfile.call(body, { actor }));
+    const mcpResult = await mcpProfile.call(body, { actor });
+    if (toolName === 'device_robot_vacuum') vacuumStarted('robot_vacuum', toolAction, mcpResult?.result?.structuredContent, sessionEntry.via === 'phone' ? 'phone' : 'ai_agent');
+    json(res, 200, mcpResult);
     return;
   }
   json(res, 200, rpcError(body.id, -32601, 'Method not found'));
@@ -2116,6 +2155,7 @@ if (directEntry) {
   const hubBeat = notifier.enabled && listenEnabled ? setInterval(() => { void notifier.heartbeat(); }, 5 * 60_000) : null;
   hubBeat?.unref();
   if (notifier.enabled && listenEnabled) void notifier.heartbeat();
+  if (guardian && listenEnabled) usbGateway.start();
   if (listenEnabled) {
     const address = await started.listen(); activePort = address.port;
     console.log(`Home MCP simulator: http://127.0.0.1:${activePort}`);
@@ -2131,6 +2171,7 @@ if (directEntry) {
     if (guardian) console.log(`Voice notice for the person at home: ${voice.status().enabled ? `on (${voice.status().lang}, Mac speaker)` : 'off (HOME_MCP_VOICE=on to enable)'}.`);
     if (guardian) console.log(`Ring Chime: ${ringChime.status().enabled ? 'on (sounds before the Mac voice when a Ring token is loaded and a Chime is found; Mac only otherwise)' : 'off (HOME_MCP_CHIME=on to enable)'}.`);
     if (remoteRelay) console.log(`Remote approval: via ${new URL(process.env.HOME_MCP_RELAY_BASE).host} (relay public key, pin as HubPublicKeySpki: ${relayKeySpki}).`);
+    if (guardian) console.log(`Home gateway: ${usbGateway.status().enabled ? 'real ESP32-C3 on USB (firmware/home_gateway; waiting for its hello)' : 'SIMULATED (HOME_MCP_USB_GATEWAY=on uses a real ESP32-C3 on USB)'}.`);
     if (remoteRelay) console.log(`Ring webhooks: ${process.env.HOME_MCP_RING_WEBHOOKS === 'on' ? 'pulled from the relay every 10 s (Ring posts to /ring/webhook)' : 'off (HOME_MCP_RING_WEBHOOKS=on to pull them from the relay)'}.`);
     if (doors) console.log(`Ring doorbell: ${ringProviderToken && !ringNetworkOff ? 'watching Ring event history every 10 s for doorbell presses and a person at the door (it asks the admin phone; it never opens the door)' : ringNetworkOff ? 'off (HOME_MCP_RING_PROBE=off)' : 'waiting for a Playground token (paste it in the console: Ring connection)'}; the admin can also ring a simulated doorbell.`);
     { const f = faceHint.status(); console.log(f.enabled ? `Face hint: ON (local OpenCV YuNet + SFace; ${f.people} enrolled with consent; hint only, never opens the door).` : `Face hint: OFF (${f.reason}).`); }
@@ -2146,6 +2187,6 @@ if (directEntry) {
       console.log('Seven devices are SIMULATED; Ring discovery requires a manual owner and independent local operator gate. No Wi-Fi, physical device, or cloud connection.');
     }
   }
-  const shutdown = () => { if (interval !== null) clearInterval(interval); if (hubBeat !== null) clearInterval(hubBeat); if (guardianTick !== null) clearInterval(guardianTick); if (doorbellTick !== null) clearInterval(doorbellTick); if (relayTick !== null) clearInterval(relayTick); phonePromptReader?.close(); faceWorker?.close(); void started.close(); };
+  const shutdown = () => { usbGateway.stop(); if (interval !== null) clearInterval(interval); if (hubBeat !== null) clearInterval(hubBeat); if (guardianTick !== null) clearInterval(guardianTick); if (doorbellTick !== null) clearInterval(doorbellTick); if (relayTick !== null) clearInterval(relayTick); phonePromptReader?.close(); faceWorker?.close(); void started.close(); };
   process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
 }

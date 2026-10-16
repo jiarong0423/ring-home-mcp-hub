@@ -10,7 +10,7 @@ let failures = 0;
 let timer = null;
 let speed = 1;
 
-const deviceName = id => (['camera', 'gateway'].includes(id) ? t('guardian.target.' + id) : t('device.' + id + '.label'));
+const deviceName = id => (['camera', 'gateway', 'home_button'].includes(id) ? t('guardian.target.' + id) : t('device.' + id + '.label'));
 const actionName = (id, action) => t('device.' + id + '.action.' + action);
 const item = (text, className) => { const li = document.createElement('li'); if (className) li.className = className; li.textContent = text; return li; };
 
@@ -33,6 +33,13 @@ function eventText(e) {
     case 'door_expired': return t('guardian.event.doorExpired', { who: asker });
     case 'door_failed': return t('guardian.event.doorFailed', { reason: p.reason ?? '—' });
     case 'doorbell_again': return t('guardian.event.doorbellAgain');
+    case 'parent_ok': return t('guardian.event.parentOk');
+    case 'parent_help': return t('guardian.event.parentHelp');
+    case 'vacuum_started': return t('guardian.event.vacuumStarted', { origin: p.origin ?? '—' });
+    case 'vacuum_done': return t('guardian.event.vacuumDone', { minutes: p.minutes ?? '—', receipt: p.receipt ?? '—' });
+    case 'vacuum_stuck': return t('guardian.event.vacuumStuck', { reason: p.reason ?? '—', minutes: p.minutes ?? '—' });
+    case 'vacuum_unknown': return t('guardian.event.vacuumUnknown', { reason: p.reason ?? '—' });
+    case 'agent_refused': return t('guardian.event.agentRefused', { target, action: actionName(e.target, p.action), reason: p.reason ?? '—' });
     default: return e.kind;
   }
 }
@@ -47,7 +54,7 @@ function render(s) {
   el('guardian-camera-note').textContent = t(s.camera.source === 'ring' ? 'guardian.cameraRing' : 'guardian.cameraSim', { last: s.camera.lastHeartbeat });
   const gw = STATES.has(s.gateway.state) ? s.gateway.state : 'offline';
   el('guardian-gateway').textContent = t('guardian.state.' + gw);
-  el('guardian-gateway-note').textContent = t('guardian.gatewayNote', { last: s.gateway.lastHeartbeat });
+  el('guardian-gateway-note').textContent = t(s.gateway.source === 'usb' ? 'guardian.gatewayNoteUsb' : 'guardian.gatewayNote', { last: s.gateway.lastHeartbeat });
   el('guardian-routine').textContent = `${s.routine.done}/${s.routine.total}`;
   el('guardian-email').textContent = t('guardian.email.' + (['enabled', 'disabled', 'error', 'misconfigured'].includes(s.email?.email) ? s.email.email : 'disabled'));
   el('guardian-today').replaceChildren(...s.routine.today.map(r => {
@@ -111,6 +118,7 @@ if (root) {
   el('guardian-gateway-off').addEventListener('click', () => admin('/api/edge/online', { online: false }));
   el('guardian-gateway-on').addEventListener('click', () => admin('/api/edge/online', { online: true }));
   el('guardian-doorbell').addEventListener('click', () => admin('/api/door/doorbell-demo', {}));
+  el('guardian-vacuum-stuck').addEventListener('click', () => admin('/api/guardian/vacuum-fault', { fault: 'stuck' }));
   el('guardian-care-note').addEventListener('click', () => { void careNote(); });
   globalThis.addEventListener('home-mcp-session-changed', () => { failures = 0; void poll().then(schedule); });
   globalThis.addEventListener('home-mcp-door-decided', () => { void poll(); });

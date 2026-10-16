@@ -33,6 +33,10 @@ export function phraseFor(e, lang = 'en') {
     case 'offline':
       return dev ? (zh ? `${devZh}沒有回應。我已經通知你的家人。` : `The ${dev} stopped answering. I have told your family.`) : null;
     case 'recovered': return dev ? (zh ? `${devZh}恢復了。` : `The ${dev} is back.`) : null;
+    case 'parent_ok': return zh ? '收到，我已經告訴家人你很好。' : 'Thank you. I have told your family you are OK.';
+    case 'parent_help': return zh ? '我已經通知你的家人，請稍等。' : 'I have told your family you need help. Please wait.';
+    case 'vacuum_stuck': return zh ? '掃地機停住了。我已經通知你的家人。' : 'The robot vacuum has stopped. I have told your family.';
+    case 'vacuum_done': return zh ? '掃地機掃完了，已經回去充電。' : 'The robot vacuum has finished and is charging.';
     default: return null;
   }
 }

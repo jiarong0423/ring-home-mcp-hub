@@ -274,7 +274,7 @@ test('guardian routes: family and admin read status and may retry; only admin fl
   for (const bearer of [adminBearer, momBearer]) {
     const st = await call(server, '/api/guardian/status', { bearer });
     assert.equal(st.status, 200, st.raw);
-    assert.deepEqual(Object.keys(st.body).sort(), ['attention', 'camera', 'clock', 'email', 'events', 'gateway', 'now', 'overall', 'routine', 'simulated', 'time']);
+    assert.deepEqual(Object.keys(st.body).sort(), ['attention', 'camera', 'clock', 'email', 'events', 'gateway', 'now', 'overall', 'routine', 'simulated', 'time', 'vacuum']);
     assert.equal(st.body.routine.total, 8); assert.equal(st.body.email.email, 'disabled');
     assert.equal((await call(server, '/api/guardian/retry', { method: 'POST', bearer, body: { runId: 'nope' } })).body.error, 'RUN_UNKNOWN');
   }

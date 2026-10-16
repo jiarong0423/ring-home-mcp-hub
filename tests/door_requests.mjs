@@ -438,3 +438,30 @@ test('remote approval: admin phone enables, family phone enrols with the one-tim
   // the one-time code and phone credentials never reach the hub's logs
   for (const secret of [en.body.code, admin.deviceToken, mom.deviceToken]) assert.equal((server.stdout + server.stderr).includes(secret), false, 'secret leaked');
 });
+
+test('tiered AI permissions over real MCP: inside the limits runs; outside is refused before the simulator and shown on the timeline; vacuum runs are followed', async () => {
+  const server = await startServer({ HOME_MCP_CLOCK_START: '10:00' });
+  try {
+    const desk = (await call(server, '/api/login', { method: 'POST', body: { passcode: server.demoPass } })).body.token;
+    for (const deviceId of ['air_conditioner', 'robot_vacuum']) {
+      const pc = (await call(server, '/api/pair/start', { method: 'POST', bearer: desk, body: { deviceId } })).body.code;
+      assert.equal((await call(server, '/api/pair/confirm', { method: 'POST', bearer: desk, body: { deviceId, code: pc } })).status, 200);
+    }
+    const cold = await mcp(server, desk, 'device_air_conditioner', { action: 'set_temperature', parameters: { temperature: 18 } });
+    assert.equal(cold.body.result.structuredContent.status, 'refused_by_policy', cold.raw);
+    assert.deepEqual(cold.body.result.structuredContent.refused[0], { deviceId: 'air_conditioner', action: 'set_temperature', tier: 'family', reason: 'OUTSIDE_FAMILY_LIMITS', limit: { min: 24, max: 28, unit: '°C' } });
+    const state = async () => (await call(server, '/api/state', { bearer: desk })).body.devices.find((d) => d.id === 'air_conditioner').state.temperature;
+    assert.equal(await state(), 24, 'nothing ran');
+    const ok = await mcp(server, desk, 'device_air_conditioner', { action: 'set_temperature', parameters: { temperature: 26 } });
+    assert.equal(ok.body.result.isError, false, ok.raw); assert.equal(await state(), 26);
+    const batch = await mcp(server, desk, 'device_batch', { commands: [{ deviceId: 'air_conditioner', action: 'on' }, { deviceId: 'camera', action: 'disarm' }] });
+    assert.equal(batch.body.result.structuredContent.status, 'refused_by_policy', 'one family-only command refuses the whole batch');
+    const vac = await mcp(server, desk, 'device_robot_vacuum', { action: 'start' });
+    assert.equal(vac.body.result.isError, false, vac.raw);
+    const st = (await call(server, '/api/guardian/status', { bearer: desk })).body;
+    assert.equal(st.vacuum.running, true); assert.equal(st.vacuum.origin, 'ai_agent');
+    const kinds = st.events.map((e) => e.kind);
+    assert.equal(kinds.filter((k) => k === 'agent_refused').length, 2);
+    assert.ok(kinds.includes('vacuum_started'));
+  } finally { await server.stop(); }
+});

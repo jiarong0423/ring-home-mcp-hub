@@ -11,7 +11,7 @@ English is the default UI language; Chinese is available with `?lang=zh`.
 * `cloud.*` keys belong to the optional earlier-phase Cloud MCP panel, shown only when the server starts with `HOME_MCP_CLOUD_PANEL=1`. Its step lines are sent as stable codes `{ key: 'cloud.step.*', params }` by `src/cloud_mcp_panel.mjs` and rendered by the client through this table.
 * Not translated (by design): protocol / code values shown verbatim (`result.status=SUCCEEDED`, `executed=true`, `commandId=cmd_…`, error codes such as `MAC_KEY_NOT_READY`, device ids), audit `outcome`/`action` codes from the simulator, device icons (◇ ❄ ▣ ◷ ☼ ◎ ♧) and the brand mark `M`.
 
-Total keys: **609**
+Total keys: **619**
 
 | key | 中文 | English | where used |
 | --- | --- | --- | --- |
@@ -195,6 +195,8 @@ Total keys: **609**
 | `guardian.cameraRing` | Ring 實際狀態 · 最後 {last} | Ring status · last {last} | guardian.mjs |
 | `guardian.cameraSim` | 模擬 · 最後 {last} | SIMULATED · last {last} | guardian.mjs |
 | `guardian.gatewayNote` | 模擬 · 最後 {last} | SIMULATED · last {last} | guardian.mjs |
+| `guardian.gatewayNoteUsb` | 真的 ESP32-C3（USB）· 最後 {last} | Real ESP32-C3 on USB · last {last} | guardian.mjs |
+| `guardian.target.home_button` | 家中按鈕 | Home button | guardian.mjs (dynamic `guardian.target.*`) |
 | `guardian.email.enabled` | Email 通知：已開啟（Amazon SNS） | Email alerts: on (Amazon SNS) | guardian.mjs (dynamic `guardian.email.*`) |
 | `guardian.email.disabled` | Email 通知：未啟用，只在本頁顯示 | Email alerts: off; alerts show on this page only | guardian.mjs (dynamic `guardian.email.*`) |
 | `guardian.email.error` | Email 通知：上一封沒有寄出 | Email alerts: the last email could not be sent | guardian.mjs (dynamic `guardian.email.*`) |
@@ -230,6 +232,14 @@ Total keys: **609**
 | `door.pendingPerson` | Ring 偵測到門口有人 — 要開門嗎？剩 {seconds} 秒 | Ring sees a person at the front door — open the door? {seconds} s left | door.mjs |
 | `door.pendingRing` | 有人按了 Ring 門鈴 — 要開門嗎？剩 {seconds} 秒 | Someone rang the Ring doorbell — open the door? {seconds} s left | door.mjs |
 | `guardian.simDoorbell` | 展示：模擬按 Ring 門鈴 | Demo: ring the doorbell | index.html |
+| `guardian.simVacuumStuck` | 展示：掃地機卡住 | Demo: vacuum gets stuck | index.html |
+| `guardian.event.parentOk` | 家中按鈕被按了一下：「我很好」 | The home button was pressed: "I'm OK" | guardian.mjs |
+| `guardian.event.parentHelp` | 家中按鈕被長按：需要幫忙，已寄信通知家人 | The home button was held down: help requested, family emailed | guardian.mjs |
+| `guardian.event.vacuumStarted` | 掃地機開始打掃（{origin}） | Robot vacuum started ({origin}) | guardian.mjs |
+| `guardian.event.vacuumDone` | 掃地機掃完 {minutes} 分鐘，已回充電座（收據 {receipt}） | Robot vacuum finished after {minutes} min and is back on the dock (receipt {receipt}) | guardian.mjs |
+| `guardian.event.vacuumStuck` | 掃地機停住了（{reason}），已掃 {minutes} 分鐘；已寄信通知家人 | Robot vacuum stopped ({reason}) after {minutes} min; family emailed | guardian.mjs |
+| `guardian.event.vacuumUnknown` | 無法確認掃地機是否掃完（{reason}） | Robot vacuum finish cannot be confirmed ({reason}) | guardian.mjs |
+| `guardian.event.agentRefused` | AI 代理要求 {target} {action}，已拒絕（{reason}） | An AI agent asked for {target} {action}; refused ({reason}) | guardian.mjs |
 | `careNote.send` | 寄出今天的照護摘要 | Send today's care note | index.html |
 | `careNote.writing` | 正在根據今天的紀錄撰寫… | Writing from today's log… | guardian.mjs |
 | `careNote.fromBedrock` | 由 Amazon Bedrock（Claude）只根據今天的紀錄撰寫。 | Written by Amazon Bedrock (Claude) from today's log only. | guardian.mjs |
