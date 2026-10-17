@@ -176,3 +176,29 @@ test('usb gateway: off by default; a hello from a different id is refused', asyn
   assert.equal(fake.closed, true); assert.deepEqual(seen, []); assert.equal(gw.status().connected, false);
   gw.stop();
 });
+
+test('usb ports: only serial ports owned by an Espressif USB device (0x303a) are tried; a monitor control port behind a hub is not', async () => {
+  const { espressifPortsFromIoreg, ESPRESSIF_VID } = await import('../src/usb_gateway.mjs');
+  assert.equal(ESPRESSIF_VID, 12346);
+  // shape of `ioreg -r -c IOUSBHostDevice -l -w0`: a hub, an LG monitor's control port below it, and an ESP32-C3
+  const sample = [
+    '+-o USB2.1 Hub@00100000  <class IOUSBHostDevice, id 0x1, registered>',
+    '  |   "idVendor" = 3034',
+    '  +-o LG Monitor Controls@00140000  <class IOUSBHostDevice, id 0x2, registered>',
+    '  | |   "idVendor" = 1086',
+    '  | +-o IOUSBHostInterface@0  <class IOUSBHostInterface, id 0x3>',
+    '  |   +-o AppleUSBACMData  <class AppleUSBACMData, id 0x4>',
+    '  |     +-o IOSerialBSDClient  <class IOSerialBSDClient, id 0x5>',
+    '  |           "IOCalloutDevice" = "/dev/cu.usbmodem403NTMXAA3392"',
+    '  +-o USB JTAG/serial debug unit@00130000  <class IOUSBHostDevice, id 0x6, registered>',
+    '    |   "idVendor" = 12346',
+    '    +-o IOUSBHostInterface@0  <class IOUSBHostInterface, id 0x7>',
+    '      +-o IOSerialBSDClient  <class IOSerialBSDClient, id 0x8>',
+    '            "IOCalloutDevice" = "/dev/cu.usbmodem1101"',
+    '+-o AULA F108Pro@08300000  <class IOUSBHostDevice, id 0x9, registered>',
+    '  |   "idVendor" = 3141'
+  ].join('\n');
+  assert.deepEqual(espressifPortsFromIoreg(sample), ['/dev/cu.usbmodem1101']);
+  assert.deepEqual(espressifPortsFromIoreg(''), []);
+  assert.deepEqual(espressifPortsFromIoreg('"IOCalloutDevice" = "/dev/cu.usbmodem1"'), [], 'a port with no USB owner is skipped');
+});

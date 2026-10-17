@@ -1,12 +1,16 @@
 // The real home gateway: an ESP32-C3 running firmware/home_gateway, plugged into the Mac over USB. No Wi-Fi and no
 // credentials; the hub still listens on 127.0.0.1 only. Off unless HOME_MCP_USB_GATEWAY=on.
-// Only a board that first says hello with id "hmg-home-gateway" is used; any other USB serial device (another project's
-// board, a phone, a modem) is closed again untouched. Each line is one small JSON object; anything else is ignored.
+// Which ports are tried: only USB serial ports whose USB device is made by Espressif (vendor id 0x303a, the ESP32-C3's
+// built-in USB) according to macOS (ioreg), or the one port named in HOME_MCP_USB_GATEWAY_PORT. A monitor's control port,
+// a phone or another USB modem is never opened. Of the Espressif boards, only one that first says hello with id
+// "hmg-home-gateway" is used; another project's ESP32 is asked once for its identity and closed.
+// Each line is one small JSON object; anything else is ignored.
 //   {"t":"hello","id":"hmg-home-gateway","fw":"hmg-gw-1",...}  {"t":"beat","n":12,"upMs":...}  {"t":"button","press":"short"|"long","n":3}
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { closeSync, openSync, readdirSync, writeSync, createReadStream } from 'node:fs';
 
 export const GATEWAY_ID = 'hmg-home-gateway';
+export const ESPRESSIF_VID = 0x303a;
 const PORT = /^cu\.usbmodem[0-9A-Za-z]{1,24}$/u;
 const MAX_LINE = 256;
 
@@ -37,7 +41,33 @@ function realOpen(path) {
     });
   });
 }
-const realList = () => { try { return readdirSync('/dev').filter((n) => PORT.test(n)).map((n) => '/dev/' + n); } catch { return []; } };
+// ioreg prints the USB tree; each serial port (IOCalloutDevice) sits below the USB device that owns it. Walk up from the
+// port to the nearest USB device and keep the port only when that device's idVendor is Espressif.
+export function espressifPortsFromIoreg(text) {
+  const stack = []; const ports = [];
+  for (const line of String(text).split('\n')) {
+    const at = line.indexOf('+-o ');
+    if (at >= 0) {
+      while (stack.length && stack.at(-1).col >= at) stack.pop();
+      stack.push({ col: at, usb: /<class IOUSBHostDevice[,>]/u.test(line), vid: null });
+      continue;
+    }
+    const vid = line.match(/"idVendor" = (\d+)/u);
+    if (vid && stack.length) { stack.at(-1).vid = Number(vid[1]); continue; }
+    const port = line.match(/"IOCalloutDevice" = "(\/dev\/cu\.usbmodem[0-9A-Za-z]{1,24})"/u);
+    if (port) {
+      const owner = [...stack].reverse().find((n) => n.usb && n.vid !== null);
+      if (owner?.vid === ESPRESSIF_VID && !ports.includes(port[1])) ports.push(port[1]);
+    }
+  }
+  return ports;
+}
+const realList = () => {
+  const named = process.env.HOME_MCP_USB_GATEWAY_PORT;
+  if (named) return PORT.test(named.replace(/^\/dev\//u, '')) && readdirSync('/dev').includes(named.replace(/^\/dev\//u, '')) ? [named] : [];
+  try { return espressifPortsFromIoreg(execFileSync('/usr/sbin/ioreg', ['-r', '-c', 'IOUSBHostDevice', '-l', '-w0'], { encoding: 'utf8', timeout: 5000, maxBuffer: 32 << 20 })); }
+  catch { return []; }
+};
 
 export function createUsbGateway({ enabled = process.env.HOME_MCP_USB_GATEWAY === 'on', listPorts = realList, openPort = realOpen,
   onHello = () => {}, onBeat = () => {}, onButton = () => {}, onLost = () => {}, log = () => {}, helloTimeoutMs = 4000,
