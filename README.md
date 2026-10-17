@@ -49,7 +49,8 @@ flowchart TB
   end
   subgraph MAC["Mac at home, 127.0.0.1 only"]
     HUB["Home hub: src/server.mjs<br/>local MCP /mcp, pairing with a macOS dialog,<br/>door requests, guardian, voice notice,<br/>face hint (OpenCV), daily care note"]
-    SIM["SIMULATED: 7 devices incl. the door lock,<br/>home gateway"]
+    SIM["SIMULATED: 7 devices incl. the door lock"]
+    GW["Home gateway: real ESP32-C3 on USB<br/>heartbeat every 60 s, the parent's button<br/>(simulated unless HOME_MCP_USB_GATEWAY=on)"]
   end
   RING["Ring API, Playground token in hub memory<br/>devices, capabilities, status, Event History,<br/>Image Snapshots, Live Video (WHEP)<br/>Chime playback: built to the documented API"]
   subgraph NOTIFY["AWS stack home-mcp-notify"]
@@ -64,7 +65,8 @@ flowchart TB
   AP -- "approve / deny, Ring live view" --> HUB
   FP -- "ask to open the door" --> HUB
   AG -- "MCP tools/call: unlock is only a request" --> HUB
-  HUB -- "commands, receipts, heartbeats" --> SIM
+  HUB -- "commands, receipts" --> SIM
+  GW -- "USB: heartbeat, button press" --> HUB
   HUB -- "Bearer token" --> RING
   HUB -- "alerts" --> SNS
   HUB -- "HubHeartbeat every 5 min" --> CW
@@ -77,11 +79,13 @@ flowchart TB
   classDef people fill:#ffffff,stroke:#4a6073,color:#0f1720
   classDef hub fill:#e3f7ef,stroke:#1f9e78,stroke-width:2px,color:#0f1720
   classDef sim fill:#eef1f4,stroke:#8a9aa8,stroke-dasharray:4 3,color:#0f1720
+  classDef real fill:#ffffff,stroke:#0f1720,stroke-width:2px,color:#0f1720
   classDef ring fill:#e3f2fc,stroke:#1a8fd6,stroke-width:2px,color:#0f1720
   classDef aws fill:#fff1dc,stroke:#e68a00,color:#0f1720
   class AP,FP,AG people
   class HUB hub
   class SIM sim
+  class GW real
   class RING ring
   class SNS,CW,BR,FURL,DDB aws
   style MAC fill:#f3fbf8,stroke:#1f9e78
@@ -123,7 +127,8 @@ And AI agents can now operate things in the home. Our rule is simple: **the AI c
 | Amazon Bedrock daily note | **Real calls** (Converse, `global.anthropic.claude-sonnet-4-5-20250929-v1:0`, through the notifier's least-privilege profile; permission limited to that model). Without Bedrock, or if the note mentions a number not in the day's log, the hub sends the template note |
 | Earlier phase: cloud MCP chain on API Gateway, Lambda, Cognito, DynamoDB, KMS, Secrets Manager | **Real deployment**, still running, not in the video; see [docs/EARLIER_PHASE_CLOUD_MCP.md](docs/EARLIER_PHASE_CLOUD_MCP.md) |
 | Phone pairing, approvals, receipts, timeline, local MCP server, voice notice | **Real**, running on the Mac |
-| Seven home devices (incl. the door lock) and the home gateway | **Software simulations** — no physical device is controlled |
+| Seven home devices (incl. the door lock) | **Software simulations** — no physical device is controlled |
+| Home gateway (heartbeat, the parent's "I'm OK" / help button) | **Real ESP32-C3 on USB** with `HOME_MCP_USB_GATEWAY=on` (firmware in `firmware/home_gateway`); tested 2026-10-17: button presses reached the timeline, unplugging sent the real "Home gateway offline" email after 5 minutes, replugging recovered. It only reports; it never controls a device. Simulated when the option is off |
 | Face hint | **Real**, on the Mac (OpenCV YuNet + SFace); faces in the video are AI-generated fictional people |
 | Ring partner webhooks (relay `POST /ring/webhook`) | **Real deployment** on the relay stack; HMAC check, de-duplication and the hub's pull tested in a live run on 2026-10-16: signed test events shaped like Ring's documented examples were sent from AWS CloudShell to the live URL (reproduce with `scripts/live_webhook_test_cloudshell.sh`); 3 events reached the hub in 0.7–2.5 s, a repeat was dropped, and on the full hub a doorbell event became a door request and `device_offline` / `device_online` changed the camera state. Real Ring deliveries need partner credentials with account linking, which our account does not have |
 | Ring Chime announcements | Device discovery and capabilities ran on the real Ring API (our Playground account has one camera and no Chime, so the hub logs `no_chime`); playback, snooze and offline handling are tested against the documented responses (`tests/ring_chime.mjs`) |

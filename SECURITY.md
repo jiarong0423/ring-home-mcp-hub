@@ -11,10 +11,11 @@ Please open a GitHub issue without exploit details, or contact the maintainer th
 ## Network exposure
 - The local console binds to `127.0.0.1` and checks Host/Origin headers; it is not reachable from other machines.
 - Family relay: a public Lambda function URL. Hub calls must carry an Ed25519 signature from the pinned hub key; phone calls must carry a P-256 signature from an activated phone; the hub verifies each decision again before anything opens. Ring webhook calls (`POST /ring/webhook`) must carry a valid `X-Signature` HMAC-SHA256 of the raw body; without a configured key the route answers 503. Bodies are capped at 8 KB (16 KB for `/ring/webhook`) and every row expires.
+- Optional USB home gateway (`HOME_MCP_USB_GATEWAY=on`): the hub only opens a serial port whose USB vendor id is Espressif (0x303a) or the port named in `HOME_MCP_USB_GATEWAY_PORT`, and only trusts it after a hello with the expected gateway id. Lines longer than 256 characters or not in the JSON line format are dropped. The board can only report a heartbeat or a button press; it cannot open the door or control a device.
 - The hub calls Amazon SNS, CloudWatch and Bedrock through the AWS CLI with a dedicated least-privilege profile; it never handles access keys.
 
 ## Dependencies
-- Local console: Node.js standard library only (no npm dependencies). Optional features call system tools by absolute path: `/usr/bin/osascript` (pairing dialog), `/usr/bin/say` (voice notice), the AWS CLI (email, heartbeat, Bedrock) and a local Python with `opencv-python-headless` and `numpy` (face hint).
+- Local console: Node.js standard library only (no npm dependencies). Optional features call system tools by absolute path: `/usr/bin/osascript` (pairing dialog), `/usr/bin/say` (voice notice), `/usr/sbin/ioreg`, `/bin/stty` and `/bin/cat` (USB home gateway), the AWS CLI (email, heartbeat, Bedrock) and a local Python with `opencv-python-headless` and `numpy` (face hint).
 - The relay Lambda uses the AWS SDK bundled in the Node.js 22 runtime.
 
 ## Earlier phase (cloud MCP chain)

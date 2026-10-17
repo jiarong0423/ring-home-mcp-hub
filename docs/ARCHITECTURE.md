@@ -21,7 +21,8 @@ flowchart TB
   end
   subgraph MAC["Mac at home, 127.0.0.1 only"]
     HUB["Home hub: src/server.mjs<br/>local MCP /mcp, pairing with a macOS dialog,<br/>door requests, guardian, voice notice,<br/>face hint (OpenCV), daily care note"]
-    SIM["SIMULATED: 7 devices incl. the door lock,<br/>home gateway"]
+    SIM["SIMULATED: 7 devices incl. the door lock"]
+    GW["Home gateway: real ESP32-C3 on USB<br/>heartbeat every 60 s, the parent's button<br/>(simulated unless HOME_MCP_USB_GATEWAY=on)"]
   end
   RING["Ring API, Playground token in hub memory<br/>devices, capabilities, status, Event History,<br/>Image Snapshots, Live Video (WHEP)<br/>Chime playback: built to the documented API"]
   subgraph NOTIFY["AWS stack home-mcp-notify"]
@@ -36,7 +37,8 @@ flowchart TB
   AP -- "approve / deny, Ring live view" --> HUB
   FP -- "ask to open the door" --> HUB
   AG -- "MCP tools/call: unlock is only a request" --> HUB
-  HUB -- "commands, receipts, heartbeats" --> SIM
+  HUB -- "commands, receipts" --> SIM
+  GW -- "USB: heartbeat, button press" --> HUB
   HUB -- "Bearer token" --> RING
   HUB -- "alerts" --> SNS
   HUB -- "HubHeartbeat every 5 min" --> CW
@@ -49,11 +51,13 @@ flowchart TB
   classDef people fill:#ffffff,stroke:#4a6073,color:#0f1720
   classDef hub fill:#e3f7ef,stroke:#1f9e78,stroke-width:2px,color:#0f1720
   classDef sim fill:#eef1f4,stroke:#8a9aa8,stroke-dasharray:4 3,color:#0f1720
+  classDef real fill:#ffffff,stroke:#0f1720,stroke-width:2px,color:#0f1720
   classDef ring fill:#e3f2fc,stroke:#1a8fd6,stroke-width:2px,color:#0f1720
   classDef aws fill:#fff1dc,stroke:#e68a00,color:#0f1720
   class AP,FP,AG people
   class HUB hub
   class SIM sim
+  class GW real
   class RING ring
   class SNS,CW,BR,FURL,DDB aws
   style MAC fill:#f3fbf8,stroke:#1f9e78

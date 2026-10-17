@@ -62,7 +62,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="system-overview-title system-overview-desc">
         <title id="system-overview-title">Home MCP Guardian: what runs where</title>
-        <desc id="system-overview-desc">A home hub on the Mac takes door requests from an AI agent and approvals from family phones, drives simulated home devices, calls the Ring API, and uses two AWS stacks: a signed relay that also receives Ring webhooks, and SNS, CloudWatch and Bedrock for alerts and the daily care note.</desc>
+        <desc id="system-overview-desc">A home hub on the Mac takes door requests from an AI agent and approvals from family phones, drives simulated home devices, watches a real ESP32-C3 home gateway on USB (heartbeat and the parent's button), calls the Ring API, and uses two AWS stacks: a signed relay that also receives Ring webhooks, and SNS, CloudWatch and Bedrock for alerts and the daily care note.</desc>
         <defs>
           <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4a5d70"/></marker>
           <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#0b7a5a"/></marker>
@@ -73,7 +73,7 @@
         <rect width="100%" height="100%" fill="#f7f6f3"/>
 
         <!-- ===== Zones ===== -->
-        <rect x="280" y="88" width="400" height="384" rx="8" fill="rgba(11,122,90,0.04)" stroke="rgba(11,122,90,0.40)" stroke-width="1"/>
+        <rect x="280" y="88" width="400" height="448" rx="8" fill="rgba(11,122,90,0.04)" stroke="rgba(11,122,90,0.40)" stroke-width="1"/>
         <rect x="292" y="80" width="200" height="16" rx="2" fill="#f7f6f3"/>
         <text x="300" y="92" fill="#0b7a5a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">HOME · MAC, 127.0.0.1 ONLY</text>
 
@@ -106,10 +106,12 @@
         <rect x="672" y="236" width="96" height="16" rx="2" fill="#f7f6f3"/>
         <text x="720" y="248" fill="#a65400" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">SIGNED PULL</text>
 
+        <!-- home gateway -> hub: heartbeat every 60 s and the parent's button, over USB -->
+        <path d="M496,472 H500 Q508,472 508,464 V282" fill="none" stroke="#4a5d70" stroke-width="1.2" marker-end="url(#arrow)"/>
         <!-- hub -> simulated devices -->
-        <line x1="400" y1="280" x2="400" y2="358" stroke="#4a5d70" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <rect x="408" y="308" width="72" height="16" rx="2" fill="#f7f6f3"/>
-        <text x="444" y="320" fill="#55687a" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">COMMANDS</text>
+        <line x1="400" y1="280" x2="400" y2="310" stroke="#4a5d70" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="408" y="287" width="72" height="16" rx="2" fill="#f7f6f3"/>
+        <text x="444" y="299" fill="#55687a" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">COMMANDS</text>
 
         <!-- hub -> alerts and care note -->
         <path d="M600,280 V480 Q600,488 608,488 H798" fill="none" stroke="#a65400" stroke-width="1.2" marker-end="url(#arrow-aws)"/>
@@ -151,12 +153,21 @@
         <text x="480" y="240" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">voice · face hint (OpenCV)</text>
 
         <!-- Simulated home (optional / simulated) -->
-        <rect x="320" y="360" width="176" height="80" rx="6" fill="#f7f6f3"/>
-        <rect x="320" y="360" width="176" height="80" rx="6" fill="rgba(15,23,32,0.03)" stroke="#6b7a88" stroke-width="1" stroke-dasharray="4,3"/>
-        <rect x="328" y="368" width="32" height="14" rx="2" fill="transparent" stroke="rgba(107,122,136,0.60)" stroke-width="0.8"/>
-        <text x="344" y="378" fill="#4a5d70" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">SIM</text>
-        <text x="408" y="406" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Simulated home</text>
-        <text x="408" y="426" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">7 devices incl. lock</text>
+        <rect x="320" y="312" width="176" height="80" rx="6" fill="#f7f6f3"/>
+        <rect x="320" y="312" width="176" height="80" rx="6" fill="rgba(15,23,32,0.03)" stroke="#6b7a88" stroke-width="1" stroke-dasharray="4,3"/>
+        <rect x="328" y="320" width="32" height="14" rx="2" fill="transparent" stroke="rgba(107,122,136,0.60)" stroke-width="0.8"/>
+        <text x="344" y="330" fill="#4a5d70" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">SIM</text>
+        <text x="408" y="358" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Simulated home</text>
+        <text x="408" y="378" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">7 devices incl. lock</text>
+
+        <!-- Home gateway: real ESP32-C3 on USB (2026-10-17) -->
+        <rect x="320" y="432" width="176" height="80" rx="6" fill="#f7f6f3"/>
+        <rect x="320" y="432" width="176" height="80" rx="6" fill="#ffffff" stroke="#0f1720" stroke-width="1.2"/>
+        <rect x="328" y="440" width="36" height="14" rx="2" fill="transparent" stroke="rgba(11,122,90,0.60)" stroke-width="0.8"/>
+        <text x="346" y="450" fill="#0b7a5a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">REAL</text>
+        <text x="408" y="472" fill="#0f1720" font-size="16" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Home gateway</text>
+        <text x="408" y="490" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ESP32-C3 on USB</text>
+        <text x="408" y="505" fill="#4a5d70" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">heartbeat · button</text>
 
         <!-- Ring API (external) -->
         <rect x="800" y="56" width="400" height="88" rx="6" fill="#f7f6f3"/>
