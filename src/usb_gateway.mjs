@@ -6,8 +6,8 @@
 // "hmg-home-gateway" is used; another project's ESP32 is asked once for its identity and closed.
 // Each line is one small JSON object; anything else is ignored.
 //   {"t":"hello","id":"hmg-home-gateway","fw":"hmg-gw-1",...}  {"t":"beat","n":12,"upMs":...}  {"t":"button","press":"short"|"long","n":3}
-import { execFile, execFileSync } from 'node:child_process';
-import { closeSync, openSync, readdirSync, writeSync, createReadStream } from 'node:fs';
+import { execFile, execFileSync, spawn } from 'node:child_process';
+import { closeSync, constants as fsConstants, openSync, readdirSync, writeSync } from 'node:fs';
 
 export const GATEWAY_ID = 'hmg-home-gateway';
 export const ESPRESSIF_VID = 0x303a;
@@ -24,19 +24,28 @@ export function parseGatewayLine(line) {
   return null;
 }
 
-// Real serial I/O on macOS: /bin/stty sets 115200 raw on the port, then the device file is read and written directly.
+// Real serial I/O on macOS. Reading a device file with Node's fs blocks a thread-pool thread, and closing that fd while the
+// read is pending hangs the process (seen with a real ESP32-C3), so reading is done by /bin/cat in its own process: closing
+// the port is just ending that process, and an unplugged board ends it by itself. Writes go through a separate
+// non-blocking fd, which also keeps the port open so /bin/stty's raw 115200 setting stays in place.
 function realOpen(path) {
   return new Promise((resolve, reject) => {
+    let wfd;
+    try { wfd = openSync(path, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOCTTY); } catch (e) { reject(e); return; }
     execFile('/bin/stty', ['-f', path, '115200', 'raw', '-echo', 'clocal'], { timeout: 3000 }, (error) => {
-      if (error) { reject(error); return; }
-      let fd;
-      try { fd = openSync(path, 'r+'); } catch (e) { reject(e); return; }
-      const stream = createReadStream(null, { fd, autoClose: false, highWaterMark: 1024 });
+      if (error) { try { closeSync(wfd); } catch { /* ignore */ } reject(error); return; }
+      const cat = spawn('/bin/cat', [path], { stdio: ['ignore', 'pipe', 'ignore'] });
+      let closed = false;
+      const close = () => {
+        if (closed) return; closed = true;
+        try { cat.kill('SIGTERM'); } catch { /* already gone */ }
+        try { closeSync(wfd); } catch { /* ignore */ }
+      };
       resolve({
-        onData: (fn) => stream.on('data', (b) => fn(b.toString('utf8'))),
-        onEnd: (fn) => { stream.on('end', fn); stream.on('error', fn); },
-        write: (s) => { try { writeSync(fd, s); } catch { /* port gone; onEnd follows */ } },
-        close: () => { try { stream.destroy(); } catch { /* ignore */ } try { closeSync(fd); } catch { /* ignore */ } }
+        onData: (fn) => cat.stdout.on('data', (b) => fn(b.toString('utf8'))),
+        onEnd: (fn) => { let done = false; const once = () => { if (!done) { done = true; close(); fn(); } }; cat.on('exit', once); cat.on('error', once); },
+        write: (s) => { if (!closed) { try { writeSync(wfd, s); } catch { /* port gone; the reader ends next */ } } },
+        close
       });
     });
   });
