@@ -14,7 +14,8 @@
     "start:cloud-panel": "bash scripts/start_cloud_panel_demo.sh",
     "stress": "node scripts/stress_hub.mjs",
     "eval": "node scripts/eval_guardian.mjs",
-    "test": "node --test tests/smoke.mjs tests/edge_simulation.mjs tests/ring_ingress.mjs tests/ring_edge_bridge.mjs tests/ring_mcp_bridge.mjs tests/ring_official_client.mjs tests/ring_official_history_client.mjs tests/local_identity.mjs tests/local_command.mjs tests/local_ring_http.mjs tests/cloud_mcp_panel.mjs tests/phone_pairing.mjs tests/guardian.mjs tests/door_requests.mjs tests/face_hint.mjs tests/ring_doorbell.mjs tests/remote_relay.mjs tests/voice_notice.mjs tests/ring_live.mjs tests/ring_chime.mjs tests/care_summary.mjs tests/home_devices.mjs cloud/aws/family-relay/tests/stack.test.mjs cloud/aws/ring-private/tests/family-relay.test.mjs tests/notify_sns.mjs cloud/aws/notify/tests/template.test.mjs",
+    "check:claims": "node scripts/check_claims.mjs",
+    "test": "node --test tests/smoke.mjs tests/edge_simulation.mjs tests/ring_ingress.mjs tests/ring_edge_bridge.mjs tests/ring_mcp_bridge.mjs tests/ring_official_client.mjs tests/ring_official_history_client.mjs tests/local_identity.mjs tests/local_command.mjs tests/local_ring_http.mjs tests/cloud_mcp_panel.mjs tests/phone_pairing.mjs tests/guardian.mjs tests/door_requests.mjs tests/face_hint.mjs tests/ring_doorbell.mjs tests/remote_relay.mjs tests/voice_notice.mjs tests/ring_live.mjs tests/ring_chime.mjs tests/care_summary.mjs tests/home_devices.mjs tests/claims.mjs cloud/aws/family-relay/tests/stack.test.mjs cloud/aws/ring-private/tests/family-relay.test.mjs tests/notify_sns.mjs cloud/aws/notify/tests/template.test.mjs",
     "test:cloud-panel": "node --test tests/cloud_mcp_panel.mjs",
     "test:mac-worker": "cd vendor_mac_launcher && node --test tests/*.test.mjs"
   }

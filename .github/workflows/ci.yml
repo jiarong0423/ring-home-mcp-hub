@@ -1,0 +1,21 @@
+# Every push to main and every pull request: the test suites, the 30-day guardian eval, and a check that every number
+# README.md states (eval results, test counts) is what was actually measured (scripts/check_claims.mjs).
+# macOS runner: some tests use macOS tools (/usr/bin/script for a pseudo-terminal, openssl for the Mac worker).
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests-and-claims:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Tests, 30-day eval and README numbers
+        run: node scripts/check_claims.mjs

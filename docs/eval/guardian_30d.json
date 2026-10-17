@@ -1,0 +1,30 @@
+{
+ "days": 30,
+ "seed": 20261016,
+ "gateway": {
+  "incidents": 48,
+  "outages_over_5min": 12,
+  "detected": 12,
+  "detection_delay_min": {
+   "min": 4,
+   "max": 4.912827132161459
+  },
+  "blips_under_3min": 22,
+  "offline_alerts_from_blips": 0,
+  "late_banners_from_blips": 0,
+  "drops_3_to_5min": 14,
+  "offline_alerts_from_3_to_5min_drops": 1,
+  "recovered_notices": 12
+ },
+ "camera": {
+  "outages": 13,
+  "detected": 13
+ },
+ "routine": {
+  "runs_with_a_result": 240,
+  "not_done_and_reported": 7,
+  "made_up_without_asking": 0
+ },
+ "emails_sent": 59,
+ "naive_alerts_one_per_missed_heartbeat": 765
+}

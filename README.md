@@ -1,5 +1,7 @@
 # Home MCP Guardian
 
+[![CI: tests, eval and README numbers](https://github.com/jiarong0423/ring-home-mcp-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/jiarong0423/ring-home-mcp-hub/actions/workflows/ci.yml)
+
 **An older parent lives alone; Ring watches the front door. When someone is at the door, when something quietly stops (the camera, the home gateway, the hub itself) or a daily routine step does not happen, the family's phone knows. Opening the door always takes approval on a trusted family phone — the admin phone, with Ring live view on its screen, or a phone the admin enabled for remote approval. An AI agent can only ask.**
 
 ![Home MCP Guardian: what runs where. The AI agent can only ask; family phones approve; the hub calls the Ring API and two AWS stacks](docs/system-overview.png)
@@ -258,8 +260,9 @@ Deploy `cloud/aws/family-relay/template.json` (parameters: the hub's relay **pub
 ### Tests
 
 ```bash
-npm test                  # 275 tests (2 face-hint tests skip when the models are absent): hub, pairing, door approval, live view, family relay, Ring webhooks, Ring Chime, guardian, AI permissions, vacuum reports, USB gateway, email alerts, voice, care note, Ring clients (offline fakes)
+npm test                  # 278 tests (2 face-hint tests skip when the models are absent): hub, pairing, door approval, live view, family relay, Ring webhooks, Ring Chime, guardian, AI permissions, vacuum reports, USB gateway, email alerts, voice, care note, Ring clients (offline fakes)
 npm run eval              # 30 simulated days of outages, blips and routine steps (numbers above)
+npm run check:claims      # re-runs the eval and both test suites; fails if any number in this README differs (also run in CI)
 npm run stress            # 8 stress scenarios against the real server with a deliberately failing fake cloud
 npm run test:mac-worker   # 40 tests, earlier phase only: the Mac worker of the cloud MCP chain (against a fake cloud)
 ```
