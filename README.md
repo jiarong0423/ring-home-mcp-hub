@@ -12,6 +12,16 @@ Built for the *Build, Ship, Shape: Amazon Developer Hackathon 2026* — **Ring t
 - License: MIT
 - Open-source companion: [ring-webhook-mailbox](https://github.com/jiarong0423/ring-webhook-mailbox), the same webhook receiver as in [A5](#a5-approve-from-anywhere-aws-family-relay-optional), extracted as its own MIT project with a simple pull API (`POST /pull`), for any hub without a public address
 
+## Edge first: the decision stays at home
+
+- **The door is decided at home.** The hub runs on a Mac in the home and listens on 127.0.0.1 only; the door opens only after the hub itself has verified a trusted family phone.
+- **The cloud only carries messages.** The AWS relay passes signed messages; the hub checks each phone's signature with the key it stored when the phone was enabled, so a compromised relay can delay an answer but cannot create an approval ([threat model](THREAT_MODEL.md)).
+- **Face matching stays home.** The optional face hint runs on the Mac; only people who agreed are enrolled, and only an encrypted feature is kept, never a photo.
+- **The edge device is a real board.** The home gateway is an ESP32-C3 on USB: no Wi-Fi, no credentials; it only reports a heartbeat and the parent's button.
+- **The cloud watches the home in return.** If the hub goes quiet, a CloudWatch alarm emails the family.
+
+The project began as a cloud MCP chain ([earlier phase](docs/EARLIER_PHASE_CLOUD_MCP.md), still deployed); for the front door, we moved the decision into the home.
+
 ## Try it in 2 minutes (judges)
 
 Needs only a Mac with Node.js ≥ 20.11. No accounts, no `npm install`, no phone; every device is simulated.
