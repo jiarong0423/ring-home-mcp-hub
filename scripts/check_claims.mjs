@@ -19,7 +19,7 @@ console.log(`eval: ${fresh.gateway.detected}/${fresh.gateway.outages_over_5min} 
 
 // 2. Test counts: README's numbers must be the counts node --test actually ran, with no failures.
 function runTests(args, cwd) {
-  try { return execFileSync(process.execPath, ['--test', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20 }); }
+  try { return execFileSync(process.execPath, ['--test', '--test-reporter=spec', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20 }); }
   catch (error) { return String(error.stdout ?? '') + String(error.stderr ?? ''); }
 }
 if (!process.argv.includes('--eval-only')) {

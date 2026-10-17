@@ -23,5 +23,6 @@ npm run test:mac-worker   # 40 tests`);
 
 test('claims: the node --test summary is read exactly', () => {
   assert.deepEqual(readTestSummary('…\nℹ tests 275\nℹ suites 0\nℹ pass 273\nℹ fail 0\nℹ skipped 2\n'), { tests: 275, pass: 273, fail: 0, skipped: 2 });
+  assert.deepEqual(readTestSummary('TAP version 13\n# tests 40\n# pass 40\n# fail 0\n# skipped 0\n'), { tests: 40, pass: 40, fail: 0, skipped: 0 });
   assert.equal(readTestSummary('nothing').tests, null);
 });

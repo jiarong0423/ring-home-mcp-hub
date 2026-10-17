@@ -41,8 +41,8 @@ export function compareEval(claims, summary) {
 export const committedEval = () => JSON.parse(readFileSync(EVAL_RESULT, 'utf8'));
 export const testFiles = () => JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts.test.split('--test')[1].trim().split(/\s+/u);
 
-// "ℹ tests 275" / "ℹ pass 275" / "ℹ fail 0" from node --test's default reporter.
+// "ℹ tests 275" (spec reporter) or "# tests 275" (TAP, the default without a terminal on Node 20/22).
 export function readTestSummary(output) {
-  const n = (k) => { const m = output.match(new RegExp(`^ℹ ${k} (\\d+)$`, 'mu')); return m ? Number(m[1]) : null; };
+  const n = (k) => { const m = output.match(new RegExp(`^(?:ℹ|#) ${k} (\\d+)$`, 'mu')); return m ? Number(m[1]) : null; };
   return { tests: n('tests'), pass: n('pass'), fail: n('fail'), skipped: n('skipped') };
 }
