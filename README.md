@@ -2,7 +2,7 @@
 
 [![CI: tests, eval and README numbers](https://github.com/jiarong0423/ring-home-mcp-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/jiarong0423/ring-home-mcp-hub/actions/workflows/ci.yml)
 
-**An older parent lives alone; Ring watches the front door. When someone is at the door, when something quietly stops (the camera, the home gateway, the hub itself) or a daily routine step does not happen, the family's phone knows. Opening the door always takes approval on a trusted family phone — the admin phone, with Ring live view on its screen, or a phone the admin enabled for remote approval. An AI agent can only ask.**
+**Ring and AWS watch over your family with you, the one who approves.** **An older parent lives alone; Ring watches the front door. When someone is at the door, when something quietly stops (the camera, the home gateway, the hub itself) or a daily routine step does not happen, the family's phone knows. Opening the door always takes approval on a trusted family phone — the admin phone, with Ring live view on its screen, or a phone the admin enabled for remote approval. An AI agent can only ask.**
 
 ![Home MCP Guardian: what runs where. The AI agent can only ask; family phones approve; the hub calls the Ring API and two AWS stacks](docs/system-overview.png)
 
